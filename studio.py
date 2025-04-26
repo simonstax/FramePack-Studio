@@ -364,6 +364,9 @@ def worker(input_image, prompt_text, n_prompt, seed, total_second_length, latent
 
         latent_paddings = reversed(range(total_latent_sections))
 
+        previous_prompt = None
+        first_section_of_prompt = True
+
         if total_latent_sections > 4:
             # In theory the latent_paddings should follow the above sequence, but it seems that duplicating some
             # items looks better than expanding it when total_latent_sections > 4
@@ -470,6 +473,15 @@ def worker(input_image, prompt_text, n_prompt, seed, total_second_length, latent
                 
                 stream_to_use.output_queue.push(('progress', (preview, desc, make_progress_bar_html(percentage, hint))))
                 return
+
+                if current_prompt != previous_prompt:
+                    first_section_of_prompt = True
+                else:
+                    first_section_of_prompt = False
+
+                gs_this_section = gs
+                if first_section_of_prompt:
+                    gs_this_section = gs * 1.5
 
             generated_latents = sample_hunyuan(
                 transformer=transformer,
