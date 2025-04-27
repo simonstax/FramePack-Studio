@@ -220,35 +220,32 @@ def load_lora_file(lora_file):
         print(f"Error loading LoRA: {e}")
         return None, f"Error loading LoRA: {e}"
 
-
 @torch.no_grad()
-def worker(input_image, prompt_text, n_prompt, seed, total_second_length, latent_window_size, steps, cfg, gs, rs, gpu_memory_preservation, use_teacache, mp4_crf, save_metadata, lora_values=None, job_stream=None):
-    # Use the provided job_stream or the global stream
+def worker(
+    input_image, prompt_text, n_prompt, seed, total_second_length, latent_window_size,
+    steps, cfg, gs, rs, gpu_memory_preservation, use_teacache, mp4_crf, save_metadata, blend_sections,
+    lora_values=None, job_stream=None
+):
     stream_to_use = job_stream if job_stream is not None else stream
 
     print(f"Worker received lora_values: {lora_values}, type: {type(lora_values)}")
     if lora_values and isinstance(lora_values, tuple) and len(lora_values) > 0:
         print(f"First lora value: {lora_values[0]}, type: {type(lora_values[0])}")
-    
-    # Apply LoRA weights if any are provided
+
     if lora_names and lora_values:
         print("setting loras", lora_names, lora_values)
-        
-        # Set adapters
         lora_utils.set_adapters(transformer, lora_names, lora_values)
-    
+
     total_latent_sections = (total_second_length * 30) / (latent_window_size * 4)
     total_latent_sections = int(max(round(total_latent_sections), 1))
 
     # Parse the timestamped prompt with boundary snapping and reversing
     prompt_sections = parse_timestamped_prompt(prompt_text, total_second_length, latent_window_size)
-    
     job_id = generate_timestamp()
 
     stream_to_use.output_queue.push(('progress', (None, '', make_progress_bar_html(0, 'Starting ...'))))
 
     try:
-        # Clean GPU
         if not high_vram:
             unload_complete_models(
                 text_encoder, text_encoder_2, image_encoder, vae, transformer
@@ -256,21 +253,33 @@ def worker(input_image, prompt_text, n_prompt, seed, total_second_length, latent
 
         # Pre-encode all prompts
         stream_to_use.output_queue.push(('progress', (None, '', make_progress_bar_html(0, 'Text encoding all prompts...'))))
-        
+
         if not high_vram:
             fake_diffusers_current_device(text_encoder, gpu)
             load_model_as_complete(text_encoder_2, target_device=gpu)
-        
-        # Create a dictionary to store encoded prompts
-        encoded_prompts = {}
+
+        # PROMPT BLENDING: Pre-encode all prompts and store in a list in order
+        unique_prompts = []
         for section in prompt_sections:
-            if section.prompt not in encoded_prompts:
-                llama_vec, clip_l_pooler = encode_prompt_conds(
-                    section.prompt, text_encoder, text_encoder_2, tokenizer, tokenizer_2
-                )
-                llama_vec, llama_attention_mask = crop_or_pad_yield_mask(llama_vec, length=512)
-                encoded_prompts[section.prompt] = (llama_vec, llama_attention_mask, clip_l_pooler)
-        
+            if section.prompt not in unique_prompts:
+                unique_prompts.append(section.prompt)
+
+        encoded_prompts = {}
+        for prompt in unique_prompts:
+            llama_vec, clip_l_pooler = encode_prompt_conds(
+                prompt, text_encoder, text_encoder_2, tokenizer, tokenizer_2
+            )
+            llama_vec, llama_attention_mask = crop_or_pad_yield_mask(llama_vec, length=512)
+            encoded_prompts[prompt] = (llama_vec, llama_attention_mask, clip_l_pooler)
+
+        # PROMPT BLENDING: Build a list of (start_section_idx, prompt) for each prompt
+        prompt_change_indices = []
+        last_prompt = None
+        for idx, section in enumerate(prompt_sections):
+            if section.prompt != last_prompt:
+                prompt_change_indices.append((idx, section.prompt))
+                last_prompt = section.prompt
+
         # Encode negative prompt
         if cfg == 1:
             llama_vec_n, llama_attention_mask_n, clip_l_pooler_n = (
@@ -296,8 +305,7 @@ def worker(input_image, prompt_text, n_prompt, seed, total_second_length, latent
             metadata.add_text("prompt", prompt_text)
             metadata.add_text("seed", str(seed))
             Image.fromarray(input_image_np).save(os.path.join(outputs_folder, f'{job_id}.png'), pnginfo=metadata)
-        
-            #save in JSON too since gradio can't extract metadata from a PNG upload. Let's save some more stuff too.
+
             metadata_dict = {
                 "prompt": prompt_text,
                 "seed": seed,
@@ -306,16 +314,15 @@ def worker(input_image, prompt_text, n_prompt, seed, total_second_length, latent
                 "cfg": cfg,
                 "gs": gs,
                 "rs": rs,
-                "latent_window_size" : latent_window_size,
-                "mp4_crf" : mp4_crf,
+                "blend_sections": blend_sections,
+                "latent_window_size": latent_window_size,
+                "mp4_crf": mp4_crf,
                 "timestamp": time.time()
             }
-            
-            # Add LoRA values to metadata if any
             if lora_names and lora_values:
                 lora_data = dict(zip(lora_names, lora_values))
                 metadata_dict["lora_values"] = lora_data
-                
+
             with open(os.path.join(outputs_folder, f'{job_id}.json'), 'w') as f:
                 json.dump(metadata_dict, f, indent=2)
         else:
@@ -347,7 +354,7 @@ def worker(input_image, prompt_text, n_prompt, seed, total_second_length, latent
             llama_vec = llama_vec.to(transformer.dtype)
             clip_l_pooler = clip_l_pooler.to(transformer.dtype)
             encoded_prompts[prompt_key] = (llama_vec, llama_attention_mask, clip_l_pooler)
-            
+
         llama_vec_n = llama_vec_n.to(transformer.dtype)
         clip_l_pooler_n = clip_l_pooler_n.to(transformer.dtype)
         image_encoder_last_hidden_state = image_encoder_last_hidden_state.to(transformer.dtype)
@@ -364,13 +371,11 @@ def worker(input_image, prompt_text, n_prompt, seed, total_second_length, latent
 
         latent_paddings = reversed(range(total_latent_sections))
 
-        previous_prompt = None
-        first_section_of_prompt = True
-
         if total_latent_sections > 4:
-            # In theory the latent_paddings should follow the above sequence, but it seems that duplicating some
-            # items looks better than expanding it when total_latent_sections > 4
             latent_paddings = [3] + [2] * (total_latent_sections - 3) + [1, 0]
+
+        # PROMPT BLENDING: Track section index
+        section_idx = 0
 
         for latent_padding in latent_paddings:
             is_last_section = latent_padding == 0
@@ -380,42 +385,66 @@ def worker(input_image, prompt_text, n_prompt, seed, total_second_length, latent
                 stream_to_use.output_queue.push(('end', None))
                 return
 
-           # Calculate current time position to determine which prompt to use
             current_time_position = (total_generated_latent_frames * 4 - 3) / 30  # in seconds
             if current_time_position < 0:
                 current_time_position = 0.01
 
-            
             # Find the appropriate prompt for this section
             current_prompt = prompt_sections[0].prompt  # Default to first prompt
             for section in prompt_sections:
                 if section.start_time <= current_time_position and (section.end_time is None or current_time_position < section.end_time):
                     current_prompt = section.prompt
                     break
-            
-            # Get the encoded prompt for this section
-            llama_vec, llama_attention_mask, clip_l_pooler = encoded_prompts[current_prompt]
 
-            # Calculate the original (non-reversed) time position for display
+            # PROMPT BLENDING: Find if we're in a blend window
+            blend_alpha = None
+            prev_prompt = current_prompt
+            next_prompt = current_prompt
+            for i, (change_idx, prompt) in enumerate(prompt_change_indices):
+                if section_idx < change_idx:
+                    prev_prompt = prompt_change_indices[i - 1][1] if i > 0 else prompt
+                    next_prompt = prompt
+                    blend_start = change_idx
+                    blend_end = change_idx + blend_sections
+                    if section_idx >= change_idx and section_idx < blend_end:
+                        blend_alpha = (section_idx - change_idx + 1) / blend_sections
+                    break
+                elif section_idx == change_idx:
+                    # At the exact change, start blending
+                    if i > 0:
+                        prev_prompt = prompt_change_indices[i - 1][1]
+                        next_prompt = prompt
+                        blend_alpha = 1.0 / blend_sections
+                    else:
+                        prev_prompt = prompt
+                        next_prompt = prompt
+                        blend_alpha = None
+                    break
+            else:
+                # After last change, no blending
+                prev_prompt = current_prompt
+                next_prompt = current_prompt
+                blend_alpha = None
+
+            # Get the encoded prompt for this section
+            if blend_alpha is not None and prev_prompt != next_prompt:
+                # Blend embeddings
+                prev_llama_vec, prev_llama_attention_mask, prev_clip_l_pooler = encoded_prompts[prev_prompt]
+                next_llama_vec, next_llama_attention_mask, next_clip_l_pooler = encoded_prompts[next_prompt]
+                llama_vec = (1 - blend_alpha) * prev_llama_vec + blend_alpha * next_llama_vec
+                llama_attention_mask = prev_llama_attention_mask  # usually same
+                clip_l_pooler = (1 - blend_alpha) * prev_clip_l_pooler + blend_alpha * next_clip_l_pooler
+                print(f"Blending prompts: '{prev_prompt[:30]}...' -> '{next_prompt[:30]}...', alpha={blend_alpha:.2f}")
+            else:
+                llama_vec, llama_attention_mask, clip_l_pooler = encoded_prompts[current_prompt]
+
             original_time_position = total_second_length - current_time_position
             if original_time_position < 0:
                 original_time_position = 0
 
-            if current_prompt != previous_prompt:
-                first_section_of_prompt = True
-            else:
-                first_section_of_prompt = False
-
-            # PATCH: Set gs value
-            gs_this_section = gs
-            if first_section_of_prompt:
-                gs_this_section = gs * 1.5  # or whatever multiplier you want
-
-            previous_prompt = current_prompt
-
-            print(f'latent_padding_size = {latent_padding_size}, is_last_section = {is_last_section}, ' 
+            print(f'latent_padding_size = {latent_padding_size}, is_last_section = {is_last_section}, '
                   f'time position: {current_time_position:.2f}s (original: {original_time_position:.2f}s), '
-                  f'using prompt: {current_prompt[:60]}...gs:{gs_this_section}')
+                  f'using prompt: {current_prompt[:60]}...')
 
             indices = torch.arange(0, sum([1, latent_padding_size, latent_window_size, 1, 2, 16])).unsqueeze(0)
             clean_latent_indices_pre, blank_indices, latent_indices, clean_latent_indices_post, clean_latent_2x_indices, clean_latent_4x_indices = indices.split([1, latent_padding_size, latent_window_size, 1, 2, 16], dim=1)
@@ -428,8 +457,6 @@ def worker(input_image, prompt_text, n_prompt, seed, total_second_length, latent
             if not high_vram:
                 unload_complete_models()
                 move_model_to_device_with_memory_preservation(transformer, target_device=gpu, preserved_memory_gb=gpu_memory_preservation)
-                
-                # Move all LoRA adapters to the GPU
                 if lora_names:
                     move_lora_adapters_to_device(transformer, gpu)
 
@@ -438,18 +465,14 @@ def worker(input_image, prompt_text, n_prompt, seed, total_second_length, latent
             else:
                 transformer.initialize_teacache(enable_teacache=False)
 
-            # Before sampling, ensure all LoRA adapters are on the correct device
             if lora_names:
                 device = next(transformer.parameters()).device
                 print(f"Ensuring all LoRA adapters are on device {device}")
                 move_lora_adapters_to_device(transformer, device)
 
-
-
             def callback(d):
                 preview = d['denoised']
                 preview = vae_decode_fake(preview)
-
                 preview = (preview * 255.0).detach().cpu().numpy().clip(0, 255).astype(np.uint8)
                 preview = einops.rearrange(preview, 'b c t h w -> (b h) (t w) c')
 
@@ -459,37 +482,31 @@ def worker(input_image, prompt_text, n_prompt, seed, total_second_length, latent
 
                 current_step = d['i'] + 1
                 percentage = int(100.0 * current_step / steps)
-                
-                # Calculate current time position and original (non-reversed) position
                 current_pos = (total_generated_latent_frames * 4 - 3) / 30
                 original_pos = total_second_length - current_pos
                 if current_pos < 0: current_pos = 0
                 if original_pos < 0: original_pos = 0
 
-
-                
                 hint = f'Sampling {current_step}/{steps}'
                 desc = f'Total generated frames: {int(max(0, total_generated_latent_frames * 4 - 3))}, ' \
                        f'Video length: {max(0, (total_generated_latent_frames * 4 - 3) / 30):.2f} seconds (FPS-30). ' \
                        f'Current position: {current_pos:.2f}s (original: {original_pos:.2f}s). ' \
-                       f'using prompt: {current_prompt[:60]}... current_gs: {gs_this_section}'
-                
-                # Store progress data in a format that includes the preview image
+                       f'using prompt: {current_prompt[:60]}...'
+
                 progress_data = {
                     'preview': preview,
                     'desc': desc,
                     'html': make_progress_bar_html(percentage, hint)
                 }
-                
-                # Update the job's progress data in the queue
                 if job_stream is not None:
                     job = job_queue.get_job(job_id)
                     if job:
                         job.progress_data = progress_data
-                
-                stream_to_use.output_queue.push(('progress', (preview, desc, make_progress_bar_html(percentage, hint))))
+
+                stream_to_use.output_queue.push(('progress', (preview, desc, make_progress_bar_html(percentage, hint)))
+                )
                 return
-                
+
             generated_latents = sample_hunyuan(
                 transformer=transformer,
                 sampler='unipc',
@@ -497,9 +514,8 @@ def worker(input_image, prompt_text, n_prompt, seed, total_second_length, latent
                 height=height,
                 frames=num_frames,
                 real_guidance_scale=cfg,
-                distilled_guidance_scale=gs_this_section,
+                distilled_guidance_scale=gs,
                 guidance_rescale=rs,
-                # shift=3.0,
                 num_inference_steps=steps,
                 generator=rnd,
                 prompt_embeds=llama_vec,
@@ -528,10 +544,8 @@ def worker(input_image, prompt_text, n_prompt, seed, total_second_length, latent
             history_latents = torch.cat([generated_latents.to(history_latents), history_latents], dim=2)
 
             if not high_vram:
-                # Before offloading, move LoRA adapters to CPU if they exist
                 if lora_names:
                     move_lora_adapters_to_device(transformer, cpu)
-                
                 offload_model_from_device_for_memory_preservation(transformer, target_device=gpu, preserved_memory_gb=8)
                 load_model_as_complete(vae, target_device=gpu)
 
@@ -550,18 +564,17 @@ def worker(input_image, prompt_text, n_prompt, seed, total_second_length, latent
                 unload_complete_models()
 
             output_filename = os.path.join(outputs_folder, f'{job_id}_{total_generated_latent_frames}.mp4')
-
             save_bcthw_as_mp4(history_pixels, output_filename, fps=30, crf=mp4_crf)
-
             print(f'Decoded. Current latent shape {real_history_latents.shape}; pixel shape {history_pixels.shape}')
-
             stream_to_use.output_queue.push(('file', output_filename))
 
             if is_last_section:
                 break
+
+            section_idx += 1  # PROMPT BLENDING: increment section index
+
     except:
         traceback.print_exc()
-
         if not high_vram:
             unload_complete_models(
                 text_encoder, text_encoder_2, image_encoder, vae, transformer
@@ -575,7 +588,7 @@ def worker(input_image, prompt_text, n_prompt, seed, total_second_length, latent
 job_queue.set_worker_function(worker)
 
 
-def process(input_image, prompt_text, n_prompt, seed, total_second_length, latent_window_size, steps, cfg, gs, rs, gpu_memory_preservation, use_teacache, mp4_crf, save_metadata, *lora_values):
+def process(input_image, prompt_text, n_prompt, seed, total_second_length, latent_window_size, steps, cfg, gs, rs, gpu_memory_preservation, use_teacache, mp4_crf, save_metadata,blend_sections, *lora_values):
     
     # Create a blank black image if no input image is provided
     if input_image is None:
@@ -596,6 +609,7 @@ def process(input_image, prompt_text, n_prompt, seed, total_second_length, laten
         'cfg': cfg,
         'gs': gs,
         'rs': rs,
+        'blend_sections': blend_sections,
         'gpu_memory_preservation': gpu_memory_preservation,
         'use_teacache': use_teacache,
         'mp4_crf': mp4_crf,

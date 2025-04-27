@@ -65,19 +65,19 @@ def create_interface(
                             height=420,
                             elem_classes="contain-image"
                         )
+
+                        latent_type = gr.Dropdown(
+                            ["Black", "White", "Noise", "Green Screen"], label="Latent Image", info="Used as a starting point if no image is provided"
+                        ),
                         
                         prompt = gr.Textbox(label="Prompt", value=default_prompt)
 
                         #example_quick_prompts = gr.Dataset(samples=quick_prompts, label='Quick List', samples_per_page=1000, components=[prompt])
                         #example_quick_prompts.click(lambda x: x[0], inputs=[example_quick_prompts], outputs=prompt, show_progress=False, queue=False)
                         with gr.Accordion("Prompt Parameters", open=False):
-                            boost_gs_checkbox = gr.Checkbox(
-                                label="Boost Guidance on prompt change",
-                                value=False
-                            )
-                            gs_boost_slider = gr.Slider(
-                                minimum=1.0, maximum=3.0, value=1.5, step=0.05,
-                                label="Guidance multiplier"
+                            blend_sections = gr.Slider(
+                                minimum=0, maximum=10, value=4, step=1,
+                                label="Number of sections to blend between prompts"
                             )
                         with gr.Accordion("Generation Parameters", open=True):
                             with gr.Row():
@@ -98,7 +98,7 @@ def create_interface(
                                 randomize_seed = gr.Checkbox(label="Randomize", value=False, info="Generate a new random seed for each job")
                             with gr.Row("LoRA"):
                                 for lora in lora_names:
-                                    lora_values.append(gr.Slider(label=lora, minimum=0.0, maximum=2.0, value=1.0, step=0.01,))    
+                                    lora_values.append(gr.Slider(label=lora, minimum=0.0, maximum=2.0, value=0.0, step=0.01,))    
                             total_second_length = gr.Slider(label="Total Video Length (Seconds)", minimum=1, maximum=120, value=5, step=0.1)
                             steps = gr.Slider(label="Steps", minimum=1, maximum=100, value=25, step=1, info='Changing this value is not recommended.')
 
@@ -186,7 +186,7 @@ def create_interface(
             return int(time.time())
         
         # Connect the main process function
-        ips = [input_image, prompt, n_prompt, seed, total_second_length, latent_window_size, steps, cfg, gs, rs, gpu_memory_preservation, use_teacache, mp4_crf, randomize_seed, save_metadata]
+        ips = [input_image, prompt, n_prompt, seed, total_second_length, latent_window_size, steps, cfg, gs, rs, gpu_memory_preservation, use_teacache, mp4_crf, randomize_seed, save_metadata, blend_sections]
         
         # Add LoRA values to inputs if any exist
         if lora_values:
@@ -195,18 +195,18 @@ def create_interface(
         # Modified process function that updates the queue status after adding a job
         def process_with_queue_update(*args):
             # Extract all arguments
-            input_image, prompt_text, n_prompt, seed_value, total_second_length, latent_window_size, steps, cfg, gs, rs, gpu_memory_preservation, use_teacache, mp4_crf, randomize_seed_checked, save_metadata_checked, *lora_args = args
+            input_image, prompt_text, n_prompt, seed_value, total_second_length, latent_window_size, steps, cfg, gs, rs, gpu_memory_preservation, use_teacache, mp4_crf, randomize_seed_checked, save_metadata_checked, blend_sections, *lora_args = args
             
             # Use the current seed value as is for this job
             # Call the process function with all arguments
             result = process_fn(input_image, prompt_text, n_prompt, seed_value, total_second_length, 
                             latent_window_size, steps, cfg, gs, rs, gpu_memory_preservation, 
-                            use_teacache, mp4_crf, save_metadata_checked, *lora_args)
+                            use_teacache, mp4_crf, save_metadata_checked, blend_sections, *lora_args)
             
             # If randomize_seed is checked, generate a new random seed for the next job
             new_seed_value = None
             if randomize_seed_checked:
-                new_seed_value = random.randint(0, 2147483647)
+                new_seed_value = random.randint(0, 21474)
                 print(f"Generated new seed for next job: {new_seed_value}")
             
             # If a job ID was created, automatically start monitoring it and update queue
