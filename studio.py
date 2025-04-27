@@ -400,10 +400,22 @@ def worker(input_image, prompt_text, n_prompt, seed, total_second_length, latent
             original_time_position = total_second_length - current_time_position
             if original_time_position < 0:
                 original_time_position = 0
-                
+
+            if current_prompt != previous_prompt:
+                first_section_of_prompt = True
+            else:
+                first_section_of_prompt = False
+
+            # PATCH: Set gs value
+            gs_this_section = gs
+            if first_section_of_prompt:
+                gs_this_section = gs * 1.5  # or whatever multiplier you want
+
+            previous_prompt = current_prompt
+
             print(f'latent_padding_size = {latent_padding_size}, is_last_section = {is_last_section}, ' 
                   f'time position: {current_time_position:.2f}s (original: {original_time_position:.2f}s), '
-                  f'using prompt: {current_prompt[:30]}...')
+                  f'using prompt: {current_prompt[:60]}...gs:{gs_this_section}')
 
             indices = torch.arange(0, sum([1, latent_padding_size, latent_window_size, 1, 2, 16])).unsqueeze(0)
             clean_latent_indices_pre, blank_indices, latent_indices, clean_latent_indices_post, clean_latent_2x_indices, clean_latent_4x_indices = indices.split([1, latent_padding_size, latent_window_size, 1, 2, 16], dim=1)
@@ -432,6 +444,8 @@ def worker(input_image, prompt_text, n_prompt, seed, total_second_length, latent
                 print(f"Ensuring all LoRA adapters are on device {device}")
                 move_lora_adapters_to_device(transformer, device)
 
+
+
             def callback(d):
                 preview = d['denoised']
                 preview = vae_decode_fake(preview)
@@ -451,12 +465,14 @@ def worker(input_image, prompt_text, n_prompt, seed, total_second_length, latent
                 original_pos = total_second_length - current_pos
                 if current_pos < 0: current_pos = 0
                 if original_pos < 0: original_pos = 0
+
+
                 
                 hint = f'Sampling {current_step}/{steps}'
                 desc = f'Total generated frames: {int(max(0, total_generated_latent_frames * 4 - 3))}, ' \
                        f'Video length: {max(0, (total_generated_latent_frames * 4 - 3) / 30):.2f} seconds (FPS-30). ' \
                        f'Current position: {current_pos:.2f}s (original: {original_pos:.2f}s). ' \
-                       f'Using prompt: "{current_prompt[:50]}..."'
+                       f'using prompt: {current_prompt[:60]}... current_gs: {gs_this_section}'
                 
                 # Store progress data in a format that includes the preview image
                 progress_data = {
@@ -473,16 +489,7 @@ def worker(input_image, prompt_text, n_prompt, seed, total_second_length, latent
                 
                 stream_to_use.output_queue.push(('progress', (preview, desc, make_progress_bar_html(percentage, hint))))
                 return
-
-                if current_prompt != previous_prompt:
-                    first_section_of_prompt = True
-                else:
-                    first_section_of_prompt = False
-
-                gs_this_section = gs
-                if first_section_of_prompt:
-                    gs_this_section = gs * 1.5
-
+                
             generated_latents = sample_hunyuan(
                 transformer=transformer,
                 sampler='unipc',
@@ -490,7 +497,7 @@ def worker(input_image, prompt_text, n_prompt, seed, total_second_length, latent
                 height=height,
                 frames=num_frames,
                 real_guidance_scale=cfg,
-                distilled_guidance_scale=gs,
+                distilled_guidance_scale=gs_this_section,
                 guidance_rescale=rs,
                 # shift=3.0,
                 num_inference_steps=steps,

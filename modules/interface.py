@@ -70,7 +70,15 @@ def create_interface(
 
                         #example_quick_prompts = gr.Dataset(samples=quick_prompts, label='Quick List', samples_per_page=1000, components=[prompt])
                         #example_quick_prompts.click(lambda x: x[0], inputs=[example_quick_prompts], outputs=prompt, show_progress=False, queue=False)
-                        
+                        with gr.Accordion("Prompt Parameters", open=False):
+                            boost_gs_checkbox = gr.Checkbox(
+                                label="Boost Guidance on prompt change",
+                                value=False
+                            )
+                            gs_boost_slider = gr.Slider(
+                                minimum=1.0, maximum=3.0, value=1.5, step=0.05,
+                                label="Guidance multiplier"
+                            )
                         with gr.Accordion("Generation Parameters", open=True):
                             with gr.Row():
                                 json_upload = gr.File(
