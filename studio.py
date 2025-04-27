@@ -608,29 +608,30 @@ def process(input_image, prompt_text, n_prompt, seed, total_second_length, laten
     
     # Create a blank black image if no 
     # Create a default image based on the selected latent_type
-    default_height, default_width = 640, 640
-    if latent_type == "White":
-        # Create a white image
-        input_image = np.ones((default_height, default_width, 3), dtype=np.uint8) * 255
-        print("No input image provided. Using a blank white image.")
+    if input_image is None:
+        default_height, default_width = 640, 640
+        if latent_type == "White":
+            # Create a white image
+            input_image = np.ones((default_height, default_width, 3), dtype=np.uint8) * 255
+            print("No input image provided. Using a blank white image.")
 
-    elif latent_type == "Noise":
-        # Create a noise image
-        input_image = np.random.randint(0, 256, (default_height, default_width, 3), dtype=np.uint8)
-        print("No input image provided. Using a random noise image.")
+        elif latent_type == "Noise":
+            # Create a noise image
+            input_image = np.random.randint(0, 256, (default_height, default_width, 3), dtype=np.uint8)
+            print("No input image provided. Using a random noise image.")
 
-    elif latent_type == "Green Screen":
-        # Create a green screen image with standard chroma key green (0, 177, 64)
-        input_image = np.zeros((default_height, default_width, 3), dtype=np.uint8)
-        input_image[:, :, 1] = 177  # Green channel
-        input_image[:, :, 2] = 64   # Blue channel
-        # Red channel remains 0
-        print("No input image provided. Using a standard chroma key green screen.")
+        elif latent_type == "Green Screen":
+            # Create a green screen image with standard chroma key green (0, 177, 64)
+            input_image = np.zeros((default_height, default_width, 3), dtype=np.uint8)
+            input_image[:, :, 1] = 177  # Green channel
+            input_image[:, :, 2] = 64   # Blue channel
+            # Red channel remains 0
+            print("No input image provided. Using a standard chroma key green screen.")
 
-    else:  # Default to "Black" or any other value
-        # Create a black image
-        input_image = np.zeros((default_height, default_width, 3), dtype=np.uint8)
-        print(f"No input image provided. Using a blank black image (latent_type: {latent_type}).")
+        else:  # Default to "Black" or any other value
+            # Create a black image
+            input_image = np.zeros((default_height, default_width, 3), dtype=np.uint8)
+            print(f"No input image provided. Using a blank black image (latent_type: {latent_type}).")
 
     
     # Create job parameters
