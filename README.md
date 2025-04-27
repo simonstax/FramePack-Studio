@@ -25,7 +25,7 @@ FramePack Studio is an enhanced version of the FramePack demo script, designed t
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/yourusername/framepack-studio.git
+   git clone https://github.com/colinurbs/FramePack-Studio.git
    cd framepack-studio
    ```
 
