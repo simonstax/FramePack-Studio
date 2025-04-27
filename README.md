@@ -78,6 +78,8 @@ Many thanks to [Lvmin Zhang](https://github.com/lllyasviel) for the absolutely a
 
 Thanks to [Rickard Edén](https://github.com/neph1) for the LoRA code and their general contributions to this growing FramePack scene!
 
+Thanks to everyone who has sumbitted a PR or helped with testing!
+
 
 
     @article{zhang2025framepack,
