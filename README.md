@@ -6,10 +6,12 @@ FramePack Studio is an enhanced version of the FramePack demo script, designed t
 ## Current Features
 
 - **Timestamped Prompts**: Define different prompts for specific time segments in your video
+- **Prompt Blending**: Define the blending time between timestamped prompts
 - **Basic LoRA Support**: Works with most (all?) hunyuan LoRAs but the implementation is a bit rough around the edges
 - **Queue System**: Process multiple generation jobs without blocking the interface
 - **Metadata Saving/Import**: Prompt and seed are encoded into the output PNG, all other generation metadata is saved in a JSON file
 - **I2V and T2V**: Works with or without an input image to allow for more flexibility when working with standard LoRAs
+- **Latent Image Options**: When using T2V you can generate based on a black, white, green screen or pure noise image
 
 
 ## Fresh Installation

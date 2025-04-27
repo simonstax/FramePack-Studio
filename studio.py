@@ -222,9 +222,24 @@ def load_lora_file(lora_file):
 
 @torch.no_grad()
 def worker(
-    input_image, prompt_text, n_prompt, seed, total_second_length, latent_window_size,
-    steps, cfg, gs, rs, gpu_memory_preservation, use_teacache, mp4_crf, save_metadata, blend_sections,
-    lora_values=None, job_stream=None
+    input_image, 
+    prompt_text, 
+    n_prompt, 
+    seed, 
+    total_second_length, 
+    latent_window_size,
+    steps, 
+    cfg, 
+    gs, 
+    rs, 
+    gpu_memory_preservation, 
+    use_teacache, 
+    mp4_crf, 
+    save_metadata, 
+    blend_sections, 
+    latent_type,
+    lora_values=None, 
+    job_stream=None
 ):
     stream_to_use = job_stream if job_stream is not None else stream
 
@@ -314,6 +329,7 @@ def worker(
                 "cfg": cfg,
                 "gs": gs,
                 "rs": rs,
+                "latent_type" : latent_type,
                 "blend_sections": blend_sections,
                 "latent_window_size": latent_window_size,
                 "mp4_crf": mp4_crf,
@@ -588,14 +604,34 @@ def worker(
 job_queue.set_worker_function(worker)
 
 
-def process(input_image, prompt_text, n_prompt, seed, total_second_length, latent_window_size, steps, cfg, gs, rs, gpu_memory_preservation, use_teacache, mp4_crf, save_metadata,blend_sections, *lora_values):
+def process(input_image, prompt_text, n_prompt, seed, total_second_length, latent_window_size, steps, cfg, gs, rs, gpu_memory_preservation, use_teacache, mp4_crf, save_metadata,blend_sections, latent_type, *lora_values):
     
-    # Create a blank black image if no input image is provided
-    if input_image is None:
-        # Create a default black image (640x640)
-        default_height, default_width = 640, 640
+    # Create a blank black image if no 
+    # Create a default image based on the selected latent_type
+    default_height, default_width = 640, 640
+    if latent_type == "White":
+        # Create a white image
+        input_image = np.ones((default_height, default_width, 3), dtype=np.uint8) * 255
+        print("No input image provided. Using a blank white image.")
+
+    elif latent_type == "Noise":
+        # Create a noise image
+        input_image = np.random.randint(0, 256, (default_height, default_width, 3), dtype=np.uint8)
+        print("No input image provided. Using a random noise image.")
+
+    elif latent_type == "Green Screen":
+        # Create a green screen image with standard chroma key green (0, 177, 64)
         input_image = np.zeros((default_height, default_width, 3), dtype=np.uint8)
-        print("No input image provided. Using a blank black image.")
+        input_image[:, :, 1] = 177  # Green channel
+        input_image[:, :, 2] = 64   # Blue channel
+        # Red channel remains 0
+        print("No input image provided. Using a standard chroma key green screen.")
+
+    else:  # Default to "Black" or any other value
+        # Create a black image
+        input_image = np.zeros((default_height, default_width, 3), dtype=np.uint8)
+        print(f"No input image provided. Using a blank black image (latent_type: {latent_type}).")
+
     
     # Create job parameters
     job_params = {
@@ -605,6 +641,7 @@ def process(input_image, prompt_text, n_prompt, seed, total_second_length, laten
         'seed': seed,
         'total_second_length': total_second_length,
         'latent_window_size': latent_window_size,
+        'latent_type': latent_type,
         'steps': steps,
         'cfg': cfg,
         'gs': gs,

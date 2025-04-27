@@ -66,9 +66,11 @@ def create_interface(
                             elem_classes="contain-image"
                         )
 
-                        latent_type = gr.Dropdown(
-                            ["Black", "White", "Noise", "Green Screen"], label="Latent Image", info="Used as a starting point if no image is provided"
-                        ),
+                        with gr.Accordion("Latent Image Options", open=False):
+
+                            latent_type = gr.Dropdown(
+                                ["Black", "White", "Noise", "Green Screen"], label="Latent Image", value="Black", info="Used as a starting point if no image is provided"
+                            )
                         
                         prompt = gr.Textbox(label="Prompt", value=default_prompt)
 
@@ -108,7 +110,7 @@ def create_interface(
                             cfg = gr.Slider(label="CFG Scale", minimum=1.0, maximum=32.0, value=1.0, step=0.01, visible=False)  # Should not change
                             gs = gr.Slider(label="Distilled CFG Scale", minimum=1.0, maximum=32.0, value=10.0, step=0.01)
                             rs = gr.Slider(label="CFG Re-Scale", minimum=0.0, maximum=1.0, value=0.0, step=0.01, visible=False)  # Should not change
-                            mp4_crf = gr.Slider(label="MP4 Compression", minimum=0, maximum=100, value=0, step=1, info="Lower means better quality. 0 is uncompressed. Change to 16 if you get black outputs. ")
+                            mp4_crf = gr.Slider(label="MP4 Compression", minimum=0, maximum=100, value=16, step=1, info="Lower means better quality. 0 is uncompressed. Change to 16 if you get black outputs. ")
                             gpu_memory_preservation = gr.Slider(label="GPU Inference Preserved Memory (GB) (larger means slower)", minimum=6, maximum=128, value=6, step=0.1, info="Set this number to a larger value if you encounter OOM. Larger value causes slower speed.")
 
                         with gr.Row():
@@ -186,7 +188,7 @@ def create_interface(
             return int(time.time())
         
         # Connect the main process function
-        ips = [input_image, prompt, n_prompt, seed, total_second_length, latent_window_size, steps, cfg, gs, rs, gpu_memory_preservation, use_teacache, mp4_crf, randomize_seed, save_metadata, blend_sections]
+        ips = [input_image, prompt, n_prompt, seed, total_second_length, latent_window_size, steps, cfg, gs, rs, gpu_memory_preservation, use_teacache, mp4_crf, randomize_seed, save_metadata, blend_sections, latent_type]
         
         # Add LoRA values to inputs if any exist
         if lora_values:
@@ -195,13 +197,13 @@ def create_interface(
         # Modified process function that updates the queue status after adding a job
         def process_with_queue_update(*args):
             # Extract all arguments
-            input_image, prompt_text, n_prompt, seed_value, total_second_length, latent_window_size, steps, cfg, gs, rs, gpu_memory_preservation, use_teacache, mp4_crf, randomize_seed_checked, save_metadata_checked, blend_sections, *lora_args = args
+            input_image, prompt_text, n_prompt, seed_value, total_second_length, latent_window_size, steps, cfg, gs, rs, gpu_memory_preservation, use_teacache, mp4_crf, randomize_seed_checked, save_metadata_checked, blend_sections, latent_type, *lora_args = args
             
             # Use the current seed value as is for this job
             # Call the process function with all arguments
             result = process_fn(input_image, prompt_text, n_prompt, seed_value, total_second_length, 
                             latent_window_size, steps, cfg, gs, rs, gpu_memory_preservation, 
-                            use_teacache, mp4_crf, save_metadata_checked, blend_sections, *lora_args)
+                            use_teacache, mp4_crf, save_metadata_checked, blend_sections, latent_type, *lora_args)
             
             # If randomize_seed is checked, generate a new random seed for the next job
             new_seed_value = None
