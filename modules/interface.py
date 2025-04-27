@@ -83,14 +83,20 @@ def create_interface(
                             )
                         with gr.Accordion("Generation Parameters", open=True):
                             with gr.Row():
+                                steps = gr.Slider(label="Steps", minimum=1, maximum=100, value=25, step=1)
+                                total_second_length = gr.Slider(label="Video Length (Seconds)", minimum=1, maximum=120, value=5, step=0.1)
+                            with gr.Row("LoRAs"):
+                                for lora in lora_names:
+                                    lora_values.append(gr.Slider(label=lora, minimum=0.0, maximum=2.0, value=0.0, step=0.01,))  
+                            with gr.Row("Metadata"):
                                 json_upload = gr.File(
                                     label="Upload Metadata JSON (optional)",
                                     file_types=[".json"],
                                     type="filepath",
                                     height=100,
                                 )
-                                save_metadata = gr.Checkbox(label="Save Metadata", value=True, info="Store prompt/seed in output image metadata. Saves all generation params in a JSON file with the same name")   
-                            with gr.Row():
+                                save_metadata = gr.Checkbox(label="Save Metadata", value=True, info="Save to JSON file")   
+                            with gr.Row("TeaCache"):
                                 use_teacache = gr.Checkbox(label='Use TeaCache', value=True, info='Faster speed, but often makes hands and fingers slightly worse.')
 
                                 n_prompt = gr.Textbox(label="Negative Prompt", value="", visible=False)  # Not used
@@ -98,11 +104,7 @@ def create_interface(
                             with gr.Row():
                                 seed = gr.Number(label="Seed", value=31337, precision=0)
                                 randomize_seed = gr.Checkbox(label="Randomize", value=False, info="Generate a new random seed for each job")
-                            with gr.Row("LoRA"):
-                                for lora in lora_names:
-                                    lora_values.append(gr.Slider(label=lora, minimum=0.0, maximum=2.0, value=0.0, step=0.01,))    
-                            total_second_length = gr.Slider(label="Total Video Length (Seconds)", minimum=1, maximum=120, value=5, step=0.1)
-                            steps = gr.Slider(label="Steps", minimum=1, maximum=100, value=25, step=1, info='Changing this value is not recommended.')
+                              
 
 
                         with gr.Accordion("Advanced Parameters", open=False):    
