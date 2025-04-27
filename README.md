@@ -36,7 +36,7 @@ FramePack Studio is an enhanced version of the FramePack demo script, designed t
 
 ### Setup
 
-1. Drop the studio.py, requirements.txt and the modules folder into the same folder as the demo script in your install. Drop /diffusers_helper/lora_utils.py into your diffusers_helper folder.
+1. Drop studio.py, requirements.txt and the modules folder into the same folder as the demo script in your install. Drop /diffusers_helper/lora_utils.py into your diffusers_helper folder.
 
 2. Install dependencies:
    ```bash
