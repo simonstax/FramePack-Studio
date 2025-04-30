@@ -27,6 +27,7 @@ from transformers import SiglipImageProcessor, SiglipVisionModel
 from diffusers_helper.clip_vision import hf_clip_vision_encode
 from diffusers_helper.bucket_tools import find_nearest_bucket
 from diffusers_helper import lora_utils
+from diffusers_helper.lora_utils import load_lora, unload_all_loras
 
 # Import from modules
 from modules.video_queue import VideoJobQueue, JobStatus
@@ -231,9 +232,9 @@ def worker(
     blend_sections, 
     latent_type,
     selected_loras,
+    clean_up_videos, 
     lora_values=None, 
     job_stream=None,
-    clean_up_videos=False, 
 ):
     global transformer
     
@@ -323,9 +324,15 @@ def worker(
                 "mp4_crf": mp4_crf,
                 "timestamp": time.time()
             }
-            if lora_names and lora_values:
-                lora_data = dict(zip(lora_names, lora_values))
-                metadata_dict["lora_values"] = lora_data
+            # Add LoRA information to metadata if LoRAs are used
+            if selected_loras and len(selected_loras) > 0:
+                lora_data = {}
+                for i, lora_name in enumerate(selected_loras):
+                    # Get the corresponding weight if available
+                    weight = lora_values[i] if lora_values and i < len(lora_values) else 1.0
+                    lora_data[lora_name] = float(weight)
+                
+                metadata_dict["loras"] = lora_data
 
             with open(os.path.join(outputs_folder, f'{job_id}.json'), 'w') as f:
                 json.dump(metadata_dict, f, indent=2)
@@ -380,6 +387,9 @@ def worker(
 
         # PROMPT BLENDING: Track section index
         section_idx = 0
+
+        #unload all loras
+        transformer = unload_all_loras(transformer)
 
         # --- LoRA loading and scaling ---
         if selected_loras:
@@ -721,7 +731,8 @@ def process(
         'use_teacache': use_teacache,
         'mp4_crf': mp4_crf,
         'save_metadata': save_metadata,
-        'selected_loras': selected_loras
+        'selected_loras': selected_loras,
+        'clean_up_videos': clean_up_videos
     }
     
     # Add LoRA values if provided - extract them from the tuple

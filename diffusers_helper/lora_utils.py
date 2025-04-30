@@ -46,6 +46,31 @@ def load_lora(transformer, lora_path: Path, weight_name: Optional[str] = "pytorc
     
     return transformer
 
+def unload_all_loras(transformer):
+    """
+    Unload all LoRA adapters from the transformer model.
+    
+    Args:
+        transformer: The transformer model from which to remove all LoRA adapters.
+    
+    Returns:
+        The transformer model with all LoRA adapters removed.
+    """
+    if hasattr(transformer, 'peft_config') and transformer.peft_config:
+        # Get all adapter names
+        adapter_names = list(transformer.peft_config.keys())
+        
+        if adapter_names:
+            print(f"Removing all LoRA adapters: {', '.join(adapter_names)}")
+            # Delete all adapters
+            transformer.delete_adapters(adapter_names)
+            print("All LoRA adapters have been removed.")
+        else:
+            print("No LoRA adapters found to remove.")
+    else:
+        print("Model doesn't have any LoRA adapters or peft_config.")
+    
+    return transformer
 
     
 # TODO(neph1): remove when HunyuanVideoTransformer3DModelPacked is in _SET_ADAPTER_SCALE_FN_MAPPING
