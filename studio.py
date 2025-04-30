@@ -621,22 +621,27 @@ def worker(
                 f for f in os.listdir(outputs_folder)
                 if f.startswith(f"{job_id}_") and f.endswith(".mp4")
             ]
+            print(f"Video files found for cleanup: {video_files}")
             if video_files:
                 def get_frame_count(filename):
                     try:
+                        # Handles filenames like jobid_123.mp4
                         return int(filename.replace(f"{job_id}_", "").replace(".mp4", ""))
                     except Exception:
                         return -1
                 video_files_sorted = sorted(video_files, key=get_frame_count)
+                print(f"Sorted video files: {video_files_sorted}")
                 final_video = video_files_sorted[-1]
                 for vf in video_files_sorted[:-1]:
+                    full_path = os.path.join(outputs_folder, vf)
                     try:
-                        os.remove(os.path.join(outputs_folder, vf))
-                        print(f"Deleted intermediate video: {vf}")
+                        os.remove(full_path)
+                        print(f"Deleted intermediate video: {full_path}")
                     except Exception as e:
-                        print(f"Failed to delete {vf}: {e}")
+                        print(f"Failed to delete {full_path}: {e}")
         except Exception as e:
             print(f"Error during video cleanup: {e}")
+
         
 
     stream_to_use.output_queue.push(('end', None))
@@ -771,54 +776,54 @@ def update_queue_status():
 
 
 def monitor_job(job_id):
-    """Monitor a specific job with improved error handling"""
+    """
+    Monitor a specific job and update the UI with the latest video segment as soon as it's available.
+    """
     if not job_id:
-        return None, None, None, '', 'No job ID provided', gr.update(interactive=True), gr.update(interactive=True)
-    
-    job = job_queue.get_job(job_id)
-    
-    if not job:
-        return None, None, None, '', 'Job not found', gr.update(interactive=True), gr.update(interactive=True)
- 
-    # Make sure preview is visible from the start
-    yield None, job_id, gr.update(visible=True), '', 'Initializing job...', gr.update(interactive=True), gr.update(interactive=True)
-    
+        yield None, None, None, '', 'No job ID provided', gr.update(interactive=True), gr.update(interactive=True)
+        return
+
+    last_video = None  # Track the last video file shown
+
     while True:
         job = job_queue.get_job(job_id)
-        
         if not job:
-            return None, None, None, '', 'Job not found', gr.update(interactive=True), gr.update(interactive=True)
-        
+            yield None, job_id, None, '', 'Job not found', gr.update(interactive=True), gr.update(interactive=True)
+            return
+
+        # If a new video file is available, yield it immediately
+        if job.result and job.result != last_video:
+            last_video = job.result
+            # You can also update preview/progress here if desired
+            yield last_video, job_id, gr.update(visible=True), '', '', gr.update(interactive=True), gr.update(interactive=True)
+
+        # Handle job status and progress
         if job.status == JobStatus.PENDING:
             position = job_queue.get_queue_position(job_id)
-            yield None, job_id, gr.update(visible=True), '', f'Waiting in queue. Position: {position}', gr.update(interactive=True), gr.update(interactive=True)
-        
+            yield last_video, job_id, gr.update(visible=True), '', f'Waiting in queue. Position: {position}', gr.update(interactive=True), gr.update(interactive=True)
+
         elif job.status == JobStatus.RUNNING:
             if job.progress_data and 'preview' in job.progress_data:
                 preview = job.progress_data.get('preview')
                 desc = job.progress_data.get('desc', '')
                 html = job.progress_data.get('html', '')
-                
-                # Always keep preview visible and update its value
-                yield None, job_id, gr.update(visible=True, value=preview), desc, html, gr.update(interactive=True), gr.update(interactive=True)
-
+                yield last_video, job_id, gr.update(visible=True, value=preview), desc, html, gr.update(interactive=True), gr.update(interactive=True)
             else:
-                # Keep preview visible even when no data
-                yield None, job_id, gr.update(visible=True), '', 'Processing...', gr.update(interactive=True), gr.update(interactive=True)
-        
+                yield last_video, job_id, gr.update(visible=True), '', 'Processing...', gr.update(interactive=True), gr.update(interactive=True)
+
         elif job.status == JobStatus.COMPLETED:
-            # Don't hide preview on completion
-            yield job.result, job_id, gr.update(visible=True), '', '', gr.update(interactive=True), gr.update(interactive=True)
+            # Show the final video
+            yield last_video, job_id, gr.update(visible=True), '', '', gr.update(interactive=True), gr.update(interactive=True)
             break
-        
+
         elif job.status == JobStatus.FAILED:
-            yield None, job_id, gr.update(visible=True), '', f'Error: {job.error}', gr.update(interactive=True), gr.update(interactive=True)
+            yield last_video, job_id, gr.update(visible=True), '', f'Error: {job.error}', gr.update(interactive=True), gr.update(interactive=True)
             break
-        
+
         elif job.status == JobStatus.CANCELLED:
-            yield None, job_id, gr.update(visible=True), '', 'Job cancelled', gr.update(interactive=True), gr.update(interactive=True)
+            yield last_video, job_id, gr.update(visible=True), '', 'Job cancelled', gr.update(interactive=True), gr.update(interactive=True)
             break
-        
+
         # Wait a bit before checking again
         time.sleep(0.5)
 
