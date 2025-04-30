@@ -101,20 +101,12 @@ script_dir = os.path.dirname(os.path.abspath(__file__))
 # Define LoRA folder path relative to the script directory
 lora_folder = os.path.join(script_dir, "loras")
 
+lora_names = []
 if os.path.isdir(lora_folder):
-    # Get all files with .safetensors or other LoRA extensions
     lora_files = [f for f in os.listdir(lora_folder) 
                  if f.endswith('.safetensors') or f.endswith('.pt')]
-    
     for lora_file in lora_files:
-        print(f"Loading lora {lora_file}")
-        transformer = lora_utils.load_lora(transformer, lora_folder, lora_file)
         lora_names.append(lora_file.split('.')[0])
-    
-    if not lora_files:
-        print(f"No LoRA files found in {lora_folder}")
-else:
-    print(f"LoRA folder {lora_folder} does not exist")
 
 if not high_vram:
     # DynamicSwapInstaller is same as huggingface's enable_sequential_offload but 3x faster
@@ -238,19 +230,16 @@ def worker(
     save_metadata, 
     blend_sections, 
     latent_type,
+    selected_loras,
     lora_values=None, 
-    job_stream=None, 
-    clean_up_videos=False
+    job_stream=None,
+    clean_up_videos=False, 
 ):
+    global transformer
+    
     stream_to_use = job_stream if job_stream is not None else stream
 
-    print(f"Worker received lora_values: {lora_values}, type: {type(lora_values)}")
-    if lora_values and isinstance(lora_values, tuple) and len(lora_values) > 0:
-        print(f"First lora value: {lora_values[0]}, type: {type(lora_values[0])}")
-
-    if lora_names and lora_values:
-        print("setting loras", lora_names, lora_values)
-        lora_utils.set_adapters(transformer, lora_names, lora_values)
+    
 
     total_latent_sections = (total_second_length * 30) / (latent_window_size * 4)
     total_latent_sections = int(max(round(total_latent_sections), 1))
@@ -482,20 +471,30 @@ def worker(
             else:
                 transformer.initialize_teacache(enable_teacache=False)
 
-            if lora_names:
-                device = next(transformer.parameters()).device
-                print(f"Ensuring all LoRA adapters are on device {device}")
-                move_lora_adapters_to_device(transformer, device)
+            if selected_loras:
+                for lora_name in selected_loras:
+                    lora_file = None
+                    # Find the file with this base name
+                    for ext in [".safetensors", ".pt"]:
+                        candidate = os.path.join(lora_folder, lora_name + ext)
+                        if os.path.exists(candidate):
+                            lora_file = lora_name + ext
+                            break
+                    if lora_file:
+                        print(f"Loading LoRA {lora_file}")
+                        transformer = lora_utils.load_lora(transformer, lora_folder, lora_file)
+                    else:
+                        print(f"LoRA file for {lora_name} not found!")
 
-            def callback(d):
-                preview = d['denoised']
-                preview = vae_decode_fake(preview)
-                preview = (preview * 255.0).detach().cpu().numpy().clip(0, 255).astype(np.uint8)
-                preview = einops.rearrange(preview, 'b c t h w -> (b h) (t w) c')
+                    def callback(d):
+                        preview = d['denoised']
+                        preview = vae_decode_fake(preview)
+                        preview = (preview * 255.0).detach().cpu().numpy().clip(0, 255).astype(np.uint8)
+                        preview = einops.rearrange(preview, 'b c t h w -> (b h) (t w) c')
 
-                if stream_to_use.input_queue.top() == 'end':
-                    stream_to_use.output_queue.push(('end', None))
-                    raise KeyboardInterrupt('User ends the task.')
+                        if stream_to_use.input_queue.top() == 'end':
+                            stream_to_use.output_queue.push(('end', None))
+                            raise KeyboardInterrupt('User ends the task.')
 
                 current_step = d['i'] + 1
                 percentage = int(100.0 * current_step / steps)
@@ -647,6 +646,7 @@ def process(
         blend_sections, 
         latent_type,
         clean_up_videos,
+        selected_loras,
         *lora_values   
     ):
     
@@ -695,7 +695,8 @@ def process(
         'gpu_memory_preservation': gpu_memory_preservation,
         'use_teacache': use_teacache,
         'mp4_crf': mp4_crf,
-        'save_metadata': save_metadata
+        'save_metadata': save_metadata,
+        'selected_loras': selected_loras
     }
     
     # Add LoRA values if provided - extract them from the tuple

@@ -86,8 +86,16 @@ def create_interface(
                                 steps = gr.Slider(label="Steps", minimum=1, maximum=100, value=25, step=1)
                                 total_second_length = gr.Slider(label="Video Length (Seconds)", minimum=1, maximum=120, value=5, step=0.1)
                             with gr.Row("LoRAs"):
-                                for lora in lora_names:
-                                    lora_values.append(gr.Slider(label=lora, minimum=0.0, maximum=2.0, value=0.0, step=0.01,))  
+                                lora_selector = gr.Dropdown(
+                                    choices=lora_names,
+                                    label="Select LoRAs to Load",
+                                    multiselect=True,
+                                    value=[],
+                                    info="Select one or more LoRAs to use for this job"
+                                )
+
+                                # for lora in lora_names:
+                                    # lora_values.append(gr.Slider(label=lora, minimum=0.0, maximum=2.0, value=0.0, step=0.01,))  
                             with gr.Row("Metadata"):
                                 json_upload = gr.File(
                                     label="Upload Metadata JSON (optional)",
@@ -214,7 +222,8 @@ def create_interface(
             save_metadata, 
             blend_sections, 
             latent_type, 
-            clean_up_videos
+            clean_up_videos,
+            lora_selector
         ]
         # Add LoRA values to inputs if any exist
         if lora_values:
@@ -359,6 +368,27 @@ def create_interface(
             fn=load_metadata_from_json,
             inputs=[json_upload],
             outputs=[prompt, seed] + lora_values
+        )
+
+        # Create a dictionary to hold sliders for each LoRA
+        lora_sliders = {}
+        for lora in lora_names:
+            lora_sliders[lora] = gr.Slider(
+                minimum=0.0, maximum=2.0, value=1.0, step=0.01, label=f"{lora} Weight", visible=False
+            )
+
+        # Function to update slider visibility based on selection
+        def update_lora_sliders(selected_loras):
+            updates = []
+            for lora in lora_names:
+                updates.append(gr.update(visible=(lora in selected_loras)))
+            return updates
+
+        # Connect the dropdown to the sliders
+        lora_selector.change(
+            fn=update_lora_sliders,
+            inputs=[lora_selector],
+            outputs=[lora_sliders[lora] for lora in lora_names]
         )
 
         # Create a timer event every 2 seconds
