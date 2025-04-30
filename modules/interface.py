@@ -94,6 +94,13 @@ def create_interface(
                                     info="Select one or more LoRAs to use for this job"
                                 )
 
+                                lora_sliders = {}
+                                for lora in lora_names:
+                                    lora_sliders[lora] = gr.Slider(
+                                        minimum=0.0, maximum=2.0, value=1.0, step=0.01,
+                                        label=f"{lora} Weight", visible=False, interactive=True
+                                    )
+
                                 # for lora in lora_names:
                                     # lora_values.append(gr.Slider(label=lora, minimum=0.0, maximum=2.0, value=0.0, step=0.01,))  
                             with gr.Row("Metadata"):
@@ -195,6 +202,19 @@ def create_interface(
                 
                 # Initial load of LoRA list
                 lora_list.value = list_loras()
+
+        def update_lora_sliders(selected_loras):
+            updates = []
+            for lora in lora_names:
+                updates.append(gr.update(visible=(lora in selected_loras)))
+            return updates
+
+        # Connect the dropdown to the sliders
+        lora_selector.change(
+            fn=update_lora_sliders,
+            inputs=[lora_selector],
+            outputs=[lora_sliders[lora] for lora in lora_names]
+        )        
                         
         # Add a refresh timer that updates the queue status every 2 seconds
         refresh_timer = gr.Number(value=0, visible=False)
@@ -225,10 +245,9 @@ def create_interface(
             clean_up_videos,
             lora_selector
         ]
-        # Add LoRA values to inputs if any exist
-        if lora_values:
-            ips.extend(lora_values)
-        
+        # Add LoRA sliders to the input list
+        ips.extend([lora_sliders[lora] for lora in lora_names])
+                
         # Modified process function that updates the queue status after adding a job
         def process_with_queue_update(*args):
             # Extract all arguments
@@ -369,13 +388,6 @@ def create_interface(
             inputs=[json_upload],
             outputs=[prompt, seed] + lora_values
         )
-
-        # Create a dictionary to hold sliders for each LoRA
-        lora_sliders = {}
-        for lora in lora_names:
-            lora_sliders[lora] = gr.Slider(
-                minimum=0.0, maximum=2.0, value=1.0, step=0.01, label=f"{lora} Weight", visible=False
-            )
 
         # Function to update slider visibility based on selection
         def update_lora_sliders(selected_loras):

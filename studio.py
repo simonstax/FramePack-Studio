@@ -211,7 +211,7 @@ def load_lora_file(lora_file):
     except Exception as e:
         print(f"Error loading LoRA: {e}")
         return None, f"Error loading LoRA: {e}"
-
+        
 @torch.no_grad()
 def worker(
     input_image, 
@@ -238,8 +238,6 @@ def worker(
     global transformer
     
     stream_to_use = job_stream if job_stream is not None else stream
-
-    
 
     total_latent_sections = (total_second_length * 30) / (latent_window_size * 4)
     total_latent_sections = int(max(round(total_latent_sections), 1))
@@ -383,6 +381,79 @@ def worker(
         # PROMPT BLENDING: Track section index
         section_idx = 0
 
+        # --- LoRA loading and scaling ---
+        if selected_loras:
+            for idx, lora_name in enumerate(selected_loras):
+                lora_file = None
+                for ext in [".safetensors", ".pt"]:
+                    candidate = os.path.join(lora_folder, lora_name + ext)
+                    if os.path.exists(candidate):
+                        lora_file = lora_name + ext
+                        break
+                if lora_file:
+                    print(f"Loading LoRA {lora_file}")
+                    transformer = lora_utils.load_lora(transformer, lora_folder, lora_file)
+                    # Set LoRA strength if provided
+                    if lora_values and idx < len(lora_values):
+                        lora_strength = float(lora_values[idx])
+                        # Set scaling for this LoRA
+                        for name, module in transformer.named_modules():
+                            if hasattr(module, 'scaling'):
+                                if isinstance(module.scaling, dict):
+                                    if lora_name in module.scaling:
+                                        if isinstance(module.scaling[lora_name], torch.Tensor):
+                                            module.scaling[lora_name] = torch.tensor(
+                                                lora_strength, device=module.scaling[lora_name].device
+                                            )
+                                        else:
+                                            module.scaling[lora_name] = lora_strength
+                                else:
+                                    if isinstance(module.scaling, torch.Tensor):
+                                        module.scaling = torch.tensor(
+                                            lora_strength, device=module.scaling.device
+                                        )
+                                    else:
+                                        module.scaling = lora_strength
+                else:
+                    print(f"LoRA file for {lora_name} not found!")
+
+        # --- Callback for progress ---
+        def callback(d):
+            preview = d['denoised']
+            preview = vae_decode_fake(preview)
+            preview = (preview * 255.0).detach().cpu().numpy().clip(0, 255).astype(np.uint8)
+            preview = einops.rearrange(preview, 'b c t h w -> (b h) (t w) c')
+
+            if stream_to_use.input_queue.top() == 'end':
+                stream_to_use.output_queue.push(('end', None))
+                raise KeyboardInterrupt('User ends the task.')
+
+            current_step = d['i'] + 1
+            percentage = int(100.0 * current_step / steps)
+            current_pos = (total_generated_latent_frames * 4 - 3) / 30
+            original_pos = total_second_length - current_pos
+            if current_pos < 0: current_pos = 0
+            if original_pos < 0: original_pos = 0
+
+            hint = f'Sampling {current_step}/{steps}'
+            desc = f'Total generated frames: {int(max(0, total_generated_latent_frames * 4 - 3))}, ' \
+                   f'Video length: {max(0, (total_generated_latent_frames * 4 - 3) / 30):.2f} seconds (FPS-30). ' \
+                   f'Current position: {current_pos:.2f}s (original: {original_pos:.2f}s). ' \
+                   f'using prompt: {current_prompt[:60]}...'
+
+            progress_data = {
+                'preview': preview,
+                'desc': desc,
+                'html': make_progress_bar_html(percentage, hint)
+            }
+            if job_stream is not None:
+                job = job_queue.get_job(job_id)
+                if job:
+                    job.progress_data = progress_data
+
+            stream_to_use.output_queue.push(('progress', (preview, desc, make_progress_bar_html(percentage, hint))))
+
+        # --- Main generation loop ---
         for latent_padding in latent_paddings:
             is_last_section = latent_padding == 0
             latent_padding_size = latent_padding * latent_window_size
@@ -470,58 +541,6 @@ def worker(
                 transformer.initialize_teacache(enable_teacache=True, num_steps=steps)
             else:
                 transformer.initialize_teacache(enable_teacache=False)
-
-            if selected_loras:
-                for lora_name in selected_loras:
-                    lora_file = None
-                    # Find the file with this base name
-                    for ext in [".safetensors", ".pt"]:
-                        candidate = os.path.join(lora_folder, lora_name + ext)
-                        if os.path.exists(candidate):
-                            lora_file = lora_name + ext
-                            break
-                    if lora_file:
-                        print(f"Loading LoRA {lora_file}")
-                        transformer = lora_utils.load_lora(transformer, lora_folder, lora_file)
-                    else:
-                        print(f"LoRA file for {lora_name} not found!")
-
-                    def callback(d):
-                        preview = d['denoised']
-                        preview = vae_decode_fake(preview)
-                        preview = (preview * 255.0).detach().cpu().numpy().clip(0, 255).astype(np.uint8)
-                        preview = einops.rearrange(preview, 'b c t h w -> (b h) (t w) c')
-
-                        if stream_to_use.input_queue.top() == 'end':
-                            stream_to_use.output_queue.push(('end', None))
-                            raise KeyboardInterrupt('User ends the task.')
-
-                current_step = d['i'] + 1
-                percentage = int(100.0 * current_step / steps)
-                current_pos = (total_generated_latent_frames * 4 - 3) / 30
-                original_pos = total_second_length - current_pos
-                if current_pos < 0: current_pos = 0
-                if original_pos < 0: original_pos = 0
-
-                hint = f'Sampling {current_step}/{steps}'
-                desc = f'Total generated frames: {int(max(0, total_generated_latent_frames * 4 - 3))}, ' \
-                       f'Video length: {max(0, (total_generated_latent_frames * 4 - 3) / 30):.2f} seconds (FPS-30). ' \
-                       f'Current position: {current_pos:.2f}s (original: {original_pos:.2f}s). ' \
-                       f'using prompt: {current_prompt[:60]}...'
-
-                progress_data = {
-                    'preview': preview,
-                    'desc': desc,
-                    'html': make_progress_bar_html(percentage, hint)
-                }
-                if job_stream is not None:
-                    job = job_queue.get_job(job_id)
-                    if job:
-                        job.progress_data = progress_data
-
-                stream_to_use.output_queue.push(('progress', (preview, desc, make_progress_bar_html(percentage, hint)))
-                )
-                return
 
             generated_latents = sample_hunyuan(
                 transformer=transformer,
@@ -622,6 +641,7 @@ def worker(
 
     stream_to_use.output_queue.push(('end', None))
     return
+
 
 
 # Set the worker function for the job queue
