@@ -112,9 +112,15 @@ def create_interface(
                             cfg = gr.Slider(label="CFG Scale", minimum=1.0, maximum=32.0, value=1.0, step=0.01, visible=False)  # Should not change
                             gs = gr.Slider(label="Distilled CFG Scale", minimum=1.0, maximum=32.0, value=10.0, step=0.01)
                             rs = gr.Slider(label="CFG Re-Scale", minimum=0.0, maximum=1.0, value=0.0, step=0.01, visible=False)  # Should not change
-                            mp4_crf = gr.Slider(label="MP4 Compression", minimum=0, maximum=100, value=16, step=1, info="Lower means better quality. 0 is uncompressed. Change to 16 if you get black outputs. ")
                             gpu_memory_preservation = gr.Slider(label="GPU Inference Preserved Memory (GB) (larger means slower)", minimum=6, maximum=128, value=6, step=0.1, info="Set this number to a larger value if you encounter OOM. Larger value causes slower speed.")
-
+                        with gr.Accordion("Output Parameters", open=False): 
+                            mp4_crf = gr.Slider(label="MP4 Compression", minimum=0, maximum=100, value=16, step=1, info="Lower means better quality. 0 is uncompressed. Change to 16 if you get black outputs. ")
+                            clean_up_videos = gr.Checkbox(
+                                label="Clean up video files",
+                                value=True,
+                                info="If checked, only the final video will be kept after generation."
+                            )
+                            
                         with gr.Row():
                             start_button = gr.Button(value="Add to Queue")
                             # Removed the monitor button since we'll auto-monitor
@@ -190,8 +196,26 @@ def create_interface(
             return int(time.time())
         
         # Connect the main process function
-        ips = [input_image, prompt, n_prompt, seed, total_second_length, latent_window_size, steps, cfg, gs, rs, gpu_memory_preservation, use_teacache, mp4_crf, randomize_seed, save_metadata, blend_sections, latent_type]
-        
+        ips = [
+            input_image, 
+            prompt, 
+            n_prompt, 
+            seed, 
+            total_second_length, 
+            latent_window_size,
+            steps, 
+            cfg, 
+            gs, 
+            rs, 
+            gpu_memory_preservation, 
+            use_teacache, 
+            mp4_crf,
+            randomize_seed, 
+            save_metadata, 
+            blend_sections, 
+            latent_type, 
+            clean_up_videos
+        ]
         # Add LoRA values to inputs if any exist
         if lora_values:
             ips.extend(lora_values)

@@ -239,7 +239,8 @@ def worker(
     blend_sections, 
     latent_type,
     lora_values=None, 
-    job_stream=None
+    job_stream=None, 
+    clean_up_videos=False
 ):
     stream_to_use = job_stream if job_stream is not None else stream
 
@@ -596,6 +597,30 @@ def worker(
                 text_encoder, text_encoder_2, image_encoder, vae, transformer
             )
 
+    if clean_up_videos:
+        try:
+            video_files = [
+                f for f in os.listdir(outputs_folder)
+                if f.startswith(f"{job_id}_") and f.endswith(".mp4")
+            ]
+            if video_files:
+                def get_frame_count(filename):
+                    try:
+                        return int(filename.replace(f"{job_id}_", "").replace(".mp4", ""))
+                    except Exception:
+                        return -1
+                video_files_sorted = sorted(video_files, key=get_frame_count)
+                final_video = video_files_sorted[-1]
+                for vf in video_files_sorted[:-1]:
+                    try:
+                        os.remove(os.path.join(outputs_folder, vf))
+                        print(f"Deleted intermediate video: {vf}")
+                    except Exception as e:
+                        print(f"Failed to delete {vf}: {e}")
+        except Exception as e:
+            print(f"Error during video cleanup: {e}")
+        
+
     stream_to_use.output_queue.push(('end', None))
     return
 
@@ -604,7 +629,26 @@ def worker(
 job_queue.set_worker_function(worker)
 
 
-def process(input_image, prompt_text, n_prompt, seed, total_second_length, latent_window_size, steps, cfg, gs, rs, gpu_memory_preservation, use_teacache, mp4_crf, save_metadata,blend_sections, latent_type, *lora_values):
+def process(
+        input_image, 
+        prompt_text, 
+        n_prompt, 
+        seed, 
+        total_second_length, 
+        latent_window_size, 
+        steps, 
+        cfg, 
+        gs, 
+        rs, 
+        gpu_memory_preservation, 
+        use_teacache, 
+        mp4_crf, 
+        save_metadata,
+        blend_sections, 
+        latent_type,
+        clean_up_videos,
+        *lora_values   
+    ):
     
     # Create a blank black image if no 
     # Create a default image based on the selected latent_type
