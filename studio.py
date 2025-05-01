@@ -389,7 +389,7 @@ def worker(
         section_idx = 0
 
         #unload all loras
-        transformer = unload_all_loras(transformer)
+        transformer = lora_utils.unload_all_loras(transformer)
 
         # --- LoRA loading and scaling ---
         if selected_loras:
