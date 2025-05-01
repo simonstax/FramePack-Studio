@@ -18,7 +18,7 @@ FramePack Studio is an enhanced version of the FramePack demo script, designed t
 
 ### Prerequisites
 
-- Python 3.8+
+- Python 3.10+
 - CUDA-compatible GPU with at least 8GB VRAM (16GB+ recommended)
 
 ### Setup
