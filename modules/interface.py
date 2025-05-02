@@ -49,10 +49,45 @@ def create_interface(
     }
     """
 
-    block = gr.Blocks(css=css, theme="soft").queue()
+    css += """
+    #fixed-toolbar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        z-index: 1000;
+        background: #222;
+        color: #fff;
+        padding: 10px 20px;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    #toolbar-add-to-queue-btn button {
+        font-size: 14px !important;
+        padding: 4px 16px !important;
+        height: 32px !important;
+        min-width: 80px !important;
+    }
+
+    .gr-button-primary{
+        color:white;
+    }
+    body, .gradio-container {
+        padding-top: 60px !important; /* Adjust if your toolbar is taller */
+    }
+    """
+
+    block = gr.Blocks(css=css, title="FramePack Studio", theme="soft").queue()
     
     with block:
-        gr.Markdown('# FramePack Studio')
+
+        with gr.Row(elem_id="fixed-toolbar"):
+            gr.Markdown("<h1 style='margin:0;color:white;'>FramePack Studio</h1>")
+            gr.Markdown("<h4 style='margin:0;color:white;'>V 0.2</h4>")
+            start_button = gr.Button(value="Add to Queue", elem_id="toolbar-add-to-queue-btn")
+        
         
         with gr.Tabs():
             with gr.TabItem("Generate"):
@@ -136,8 +171,8 @@ def create_interface(
                                 info="If checked, only the final video will be kept after generation."
                             )
                             
-                        with gr.Row():
-                            start_button = gr.Button(value="Add to Queue")
+                        #with gr.Row():
+                            #start_button = gr.Button(value="Add to Queue")
                             # Removed the monitor button since we'll auto-monitor
                             
                     with gr.Column():
@@ -156,52 +191,6 @@ def create_interface(
                                 datatype=["str", "str", "str", "str", "str", "str"],
                                 label="Job Queue"
                             )
-
-            with gr.TabItem("LoRA Management"):
-                gr.Markdown("## Manage LoRA Models")
-                
-                with gr.Row():
-                    lora_upload = gr.File(
-                        label="Upload LoRA File (.safetensors)",
-                        file_types=[".safetensors"],
-                        type="filepath"
-                    )
-                    
-                    lora_upload_status = gr.Markdown("")
-                
-                with gr.Row():
-                    lora_list = gr.Dataframe(
-                        headers=["Name", "Path", "Status"],
-                        datatype=["str", "str", "str"],
-                        label="Installed LoRAs"
-                    )
-                    
-                    refresh_lora_btn = gr.Button(value="Refresh List")
-                
-                # Function to list all LoRAs in the directory
-                def list_loras():
-                    lora_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'loras')
-                    if not os.path.exists(lora_dir):
-                        os.makedirs(lora_dir, exist_ok=True)
-                        
-                    loras = []
-                    for file in os.listdir(lora_dir):
-                        if file.endswith('.safetensors'):
-                            loras.append([
-                                file.split('.')[0],  # Name without extension
-                                os.path.join(lora_dir, file),  # Full path
-                                "Loaded" if file.split('.')[0] in lora_names else "Not Loaded"  # Status
-                            ])
-                    return loras
-                
-                # Connect the refresh button
-                refresh_lora_btn.click(
-                    fn=list_loras,
-                    outputs=[lora_list]
-                )
-                
-                # Initial load of LoRA list
-                lora_list.value = list_loras()
 
         def update_lora_sliders(selected_loras):
             updates = []
@@ -373,13 +362,6 @@ def create_interface(
         refresh_timer.change(
             fn=update_queue_status_fn,
             outputs=[queue_status]
-        )
-        
-        # Connect LoRA upload in management tab
-        lora_upload.change(
-            fn=handle_lora_upload,
-            inputs=[lora_upload],
-            outputs=[lora_upload, lora_upload_status]
         )
         
         # Connect JSON metadata loader
