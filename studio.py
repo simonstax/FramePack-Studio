@@ -846,6 +846,7 @@ interface = create_interface(
     end_process_fn=end_process,
     update_queue_status_fn=update_queue_status,
     load_lora_file_fn=load_lora_file,
+    job_queue=job_queue,
     lora_names=lora_names
 )
 

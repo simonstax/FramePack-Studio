@@ -16,7 +16,8 @@ def create_interface(
     end_process_fn, 
     update_queue_status_fn,
     load_lora_file_fn, 
-    default_prompt: str = 'The girl dances gracefully, with clear movements, full of charm.',
+    job_queue,
+    default_prompt: str = '"[1s: The person waves hello] [3s: The person jumps up and down] [5s: The person does a dance]',
     lora_names: list = [],
     lora_values: list = []
 ):
@@ -56,13 +57,14 @@ def create_interface(
         left: 0;
         width: 100vw;
         z-index: 1000;
-        background: #222;
+        background: rgb(11, 15, 25);
         color: #fff;
         padding: 10px 20px;
         display: flex;
         align-items: center;
         gap: 16px;
         box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        border-bottom: 1px solid #4f46e5;
     }
     #toolbar-add-to-queue-btn button {
         font-size: 14px !important;
@@ -70,6 +72,8 @@ def create_interface(
         height: 32px !important;
         min-width: 80px !important;
     }
+
+
 
     .gr-button-primary{
         color:white;
@@ -85,7 +89,8 @@ def create_interface(
 
         with gr.Row(elem_id="fixed-toolbar"):
             gr.Markdown("<h1 style='margin:0;color:white;'>FramePack Studio</h1>")
-            gr.Markdown("<h4 style='margin:0;color:white;'>V 0.2</h4>")
+            queue_stats_display = gr.Markdown("<p style='margin:0;color:white;'>Queue: 0 | Completed: 0</p>")
+            refresh_stats_btn = gr.Button("Refresh", elem_id="refresh-stats-btn")  # Add a refresh icon/button
             start_button = gr.Button(value="Add to Queue", elem_id="toolbar-add-to-queue-btn")
         
         
@@ -191,7 +196,7 @@ def create_interface(
                                 datatype=["str", "str", "str", "str", "str", "str"],
                                 label="Job Queue"
                             )
-
+        
         def update_lora_sliders(selected_loras):
             updates = []
             for lora in lora_names:
@@ -211,7 +216,14 @@ def create_interface(
         def refresh_timer_fn():
             """Updates the timer value periodically to trigger queue refresh"""
             return int(time.time())
-        
+
+        def get_queue_stats():
+            jobs = job_queue.get_all_jobs()
+            in_queue = sum(1 for job in jobs if job.status in [JobStatus.PENDING, JobStatus.RUNNING])
+            completed = sum(1 for job in jobs if job.status == JobStatus.COMPLETED)
+            return f"<p style='margin:0;color:white;'>Queue: {in_queue} | Completed: {completed}</p>"
+            
+
         # Connect the main process function
         ips = [
             input_image, 
@@ -358,12 +370,12 @@ def create_interface(
             outputs=[result_video, current_job_id, preview_image, progress_desc, progress_bar, start_button, end_button]
         )
         
-        # Set up auto-refresh for queue status
-        refresh_timer.change(
-            fn=update_queue_status_fn,
-            outputs=[queue_status]
+        refresh_stats_btn.click(
+            fn=lambda: (get_queue_stats(), update_queue_status_fn()),
+            inputs=None,
+            outputs=[queue_stats_display, queue_status]
         )
-        
+
         # Connect JSON metadata loader
         json_upload.change(
             fn=load_metadata_from_json,
@@ -385,29 +397,6 @@ def create_interface(
             outputs=[lora_sliders[lora] for lora in lora_names]
         )
 
-        # Create a timer event every 2 seconds
-        def start_refresh_timer():
-            """Function to start a thread that updates the queue status periodically"""
-            import threading
-            
-            def refresh_loop():
-                while True:
-                    # Sleep for 2 seconds
-                    time.sleep(2)
-                    # Update the timer value to trigger the queue refresh
-                    # We need to use .update() instead of direct assignment to trigger Gradio's update
-                    try:
-                        refresh_timer.update(int(time.time()))
-                    except:
-                        # If the interface is closed, this will throw an exception
-                        break
-            
-            # Start the refresh thread
-            thread = threading.Thread(target=refresh_loop, daemon=True)
-            thread.start()
-
-        # Then after defining your interface but before returning it:
-        start_refresh_timer()
             
     return block
 
