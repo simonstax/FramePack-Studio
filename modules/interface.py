@@ -54,10 +54,13 @@ def create_interface(
     with block:
         gr.Markdown('# FramePack Studio')
         
+        # Hidden state to track the selected model type
+        selected_model_type = gr.State("Original")
+        
         with gr.Tabs():
-            with gr.TabItem("Generate"):
+            with gr.TabItem("Generate (Original)", id="original_tab"):
                 with gr.Row():
-                    with gr.Column():
+                    with gr.Column(scale=2):
                         input_image = gr.Image(
                             sources='upload',
                             type="numpy",
@@ -141,7 +144,7 @@ def create_interface(
                             # Removed the monitor button since we'll auto-monitor
                             
                     with gr.Column():
-                        preview_image = gr.Image(label="Next Latents", height=150, visible=True, type="numpy")
+                        preview_image = gr.Image(label="Next Latents", height=150, visible=True, type="numpy", interactive=False)
                         result_video = gr.Video(label="Finished Frames", autoplay=True, show_share_button=False, height=256, loop=True)
                         #gr.Markdown('Note that the ending actions will be generated before the starting actions due to the inverted sampling. If the starting action is not in the video, you just need to wait, and it will be generated later.')
                         progress_desc = gr.Markdown('', elem_classes='no-generating-animation')
@@ -152,6 +155,100 @@ def create_interface(
                             end_button = gr.Button(value="Cancel Current Job", interactive=True) 
                         with gr.Row():     
                             queue_status = gr.DataFrame(
+                                headers=["Job ID", "Status", "Created", "Started", "Completed", "Elapsed"],
+                                datatype=["str", "str", "str", "str", "str", "str"],
+                                label="Job Queue"
+                            )
+
+            with gr.TabItem("Generate (F1)", id="f1_tab"):
+                with gr.Row():
+                    with gr.Column(scale=2):
+                        # F1 specific components (can be identical for now)
+                        f1_input_image = gr.Image(
+                            sources='upload',
+                            type="numpy",
+                            label="Image (optional)",
+                            height=420,
+                            elem_classes="contain-image"
+                        )
+
+                        with gr.Accordion("Latent Image Options", open=False):
+                            f1_latent_type = gr.Dropdown(
+                                ["Black", "White", "Noise", "Green Screen"], label="Latent Image", value="Black", info="Used as a starting point if no image is provided"
+                            )
+                        
+                        f1_prompt = gr.Textbox(label="Prompt", value=default_prompt)
+
+                        with gr.Accordion("Prompt Parameters", open=False):
+                            f1_blend_sections = gr.Slider(
+                                minimum=0, maximum=10, value=4, step=1,
+                                label="Number of sections to blend between prompts"
+                            )
+                        with gr.Accordion("Generation Parameters", open=True):
+                            with gr.Row():
+                                f1_steps = gr.Slider(label="Steps", minimum=1, maximum=100, value=25, step=1)
+                                f1_total_second_length = gr.Slider(label="Video Length (Seconds)", minimum=1, maximum=120, value=5, step=0.1)
+                            with gr.Row("LoRAs"):
+                                f1_lora_selector = gr.Dropdown(
+                                    choices=lora_names, # Assuming LoRAs are compatible for now
+                                    label="Select LoRAs to Load",
+                                    multiselect=True,
+                                    value=[],
+                                    info="Select one or more LoRAs to use for this job"
+                                )
+
+                                f1_lora_sliders = {}
+                                for lora in lora_names:
+                                    f1_lora_sliders[lora] = gr.Slider(
+                                        minimum=0.0, maximum=2.0, value=1.0, step=0.01,
+                                        label=f"{lora} Weight", visible=False, interactive=True
+                                    )
+                            with gr.Row("Metadata"):
+                                f1_json_upload = gr.File(
+                                    label="Upload Metadata JSON (optional)",
+                                    file_types=[".json"],
+                                    type="filepath",
+                                    height=100,
+                                )
+                                f1_save_metadata = gr.Checkbox(label="Save Metadata", value=True, info="Save to JSON file")
+                            with gr.Row("TeaCache"):
+                                f1_use_teacache = gr.Checkbox(label='Use TeaCache', value=True, info='Faster speed, but often makes hands and fingers slightly worse.')
+                                f1_n_prompt = gr.Textbox(label="Negative Prompt", value="", visible=False) # Not used
+                            
+                            with gr.Row():
+                                f1_seed = gr.Number(label="Seed", value=31337, precision=0)
+                                f1_randomize_seed = gr.Checkbox(label="Randomize", value=False, info="Generate a new random seed for each job")
+
+                        with gr.Accordion("Advanced Parameters", open=False):
+                            f1_latent_window_size = gr.Slider(label="Latent Window Size", minimum=1, maximum=33, value=9, step=1, visible=True, info='Change at your own risk, very experimental') # Should not change
+                            f1_cfg = gr.Slider(label="CFG Scale", minimum=1.0, maximum=32.0, value=1.0, step=0.01, visible=False) # Should not change
+                            f1_gs = gr.Slider(label="Distilled CFG Scale", minimum=1.0, maximum=32.0, value=10.0, step=0.01)
+                            f1_rs = gr.Slider(label="CFG Re-Scale", minimum=0.0, maximum=1.0, value=0.0, step=0.01, visible=False) # Should not change
+                            f1_gpu_memory_preservation = gr.Slider(label="GPU Inference Preserved Memory (GB) (larger means slower)", minimum=6, maximum=128, value=6, step=0.1, info="Set this number to a larger value if you encounter OOM. Larger value causes slower speed.")
+                        with gr.Accordion("Output Parameters", open=False):
+                            f1_mp4_crf = gr.Slider(label="MP4 Compression", minimum=0, maximum=100, value=16, step=1, info="Lower means better quality. 0 is uncompressed. Change to 16 if you get black outputs. ")
+                            f1_clean_up_videos = gr.Checkbox(
+                                label="Clean up video files",
+                                value=True,
+                                info="If checked, only the final video will be kept after generation."
+                            )
+                            
+                        with gr.Row():
+                            f1_start_button = gr.Button(value="Add to Queue")
+                            
+                    with gr.Column():
+                        # F1 specific outputs (can be identical for now)
+                        f1_preview_image = gr.Image(label="Next Latents", height=150, visible=True, type="numpy", interactive=False)
+                        f1_result_video = gr.Video(label="Finished Frames", autoplay=True, show_share_button=False, height=256, loop=True)
+                        f1_progress_desc = gr.Markdown('', elem_classes='no-generating-animation')
+                        f1_progress_bar = gr.HTML('', elem_classes='no-generating-animation')
+
+                        with gr.Row():
+                            f1_current_job_id = gr.Textbox(label="Current Job ID", visible=True, interactive=True)
+                            f1_end_button = gr.Button(value="Cancel Current Job", interactive=True)
+                        with gr.Row():
+                            # Shared queue status for now
+                            f1_queue_status = gr.DataFrame(
                                 headers=["Job ID", "Status", "Created", "Started", "Completed", "Elapsed"],
                                 datatype=["str", "str", "str", "str", "str", "str"],
                                 label="Job Queue"
@@ -214,8 +311,18 @@ def create_interface(
             fn=update_lora_sliders,
             inputs=[lora_selector],
             outputs=[lora_sliders[lora] for lora in lora_names]
-        )        
+        )
                         
+        # Function to update F1 LoRA sliders
+        def update_f1_lora_sliders(selected_loras):
+            updates = []
+            for lora in lora_names:
+                updates.append(gr.update(visible=(lora in selected_loras)))
+            return updates
+
+        # Connect the F1 dropdown to the F1 sliders
+        f1_lora_selector.change(fn=update_f1_lora_sliders, inputs=[f1_lora_selector], outputs=[f1_lora_sliders[lora] for lora in lora_names])
+
         # Add a refresh timer that updates the queue status every 2 seconds
         refresh_timer = gr.Number(value=0, visible=False)
         
@@ -223,10 +330,10 @@ def create_interface(
             """Updates the timer value periodically to trigger queue refresh"""
             return int(time.time())
         
-        # Connect the main process function
+        # --- Inputs for Original Model ---
         ips = [
-            input_image, 
-            prompt, 
+            input_image,
+            prompt,
             n_prompt, 
             seed, 
             total_second_length, 
@@ -248,15 +355,43 @@ def create_interface(
         # Add LoRA sliders to the input list
         ips.extend([lora_sliders[lora] for lora in lora_names])
                 
+        # --- Inputs for F1 Model ---
+        f1_ips = [
+            f1_input_image,
+            f1_prompt,
+            f1_n_prompt,
+            f1_seed,
+            f1_total_second_length,
+            f1_latent_window_size,
+            f1_steps,
+            f1_cfg,
+            f1_gs,
+            f1_rs,
+            f1_gpu_memory_preservation,
+            f1_use_teacache,
+            f1_mp4_crf,
+            f1_randomize_seed,
+            f1_save_metadata,
+            f1_blend_sections,
+            f1_latent_type,
+            f1_clean_up_videos,
+            f1_lora_selector
+        ]
+
+        # Add F1 LoRA sliders to the input list
+        f1_ips.extend([f1_lora_sliders[lora] for lora in lora_names])
+
         # Modified process function that updates the queue status after adding a job
-        def process_with_queue_update(*args):
+        # Now accepts model_type as the first argument
+        def process_with_queue_update(model_type, *args):
             # Extract all arguments
             input_image, prompt_text, n_prompt, seed_value, total_second_length, latent_window_size, steps, cfg, gs, rs, gpu_memory_preservation, use_teacache, mp4_crf, randomize_seed_checked, save_metadata_checked, blend_sections, latent_type, *lora_args = args
             
             # Use the current seed value as is for this job
             # Call the process function with all arguments
-            result = process_fn(input_image, prompt_text, n_prompt, seed_value, total_second_length, 
-                            latent_window_size, steps, cfg, gs, rs, gpu_memory_preservation, 
+            # Pass the model_type to the backend process function
+            result = process_fn(model_type, input_image, prompt_text, n_prompt, seed_value, total_second_length,
+                            latent_window_size, steps, cfg, gs, rs, gpu_memory_preservation,
                             use_teacache, mp4_crf, save_metadata_checked, blend_sections, latent_type, *lora_args)
             
             # If randomize_seed is checked, generate a new random seed for the next job
@@ -351,11 +486,20 @@ def create_interface(
             
         # Connect the buttons to their respective functions
         start_button.click(
-            fn=process_with_queue_update, 
-            inputs=ips, 
+            # Pass "Original" model type
+            fn=lambda *args: process_with_queue_update("Original", *args),
+            inputs=ips,
             outputs=[result_video, current_job_id, preview_image, progress_desc, progress_bar, start_button, end_button, queue_status, seed]
         )
         
+        f1_start_button.click(
+            # Pass "F1" model type
+            fn=lambda *args: process_with_queue_update("F1", *args),
+            inputs=f1_ips,
+            # Update F1 outputs and shared queue/job ID
+            outputs=[f1_result_video, f1_current_job_id, f1_preview_image, f1_progress_desc, f1_progress_bar, f1_start_button, f1_end_button, f1_queue_status, f1_seed]
+        )
+
         # Connect the end button to cancel the current job and update the queue
         end_button.click(
             fn=end_process_with_update,
@@ -363,18 +507,34 @@ def create_interface(
         )
         
         # Auto-monitor the current job when job_id changes
+        # Monitor original tab
         current_job_id.change(
             fn=monitor_fn,
             inputs=[current_job_id],
             outputs=[result_video, current_job_id, preview_image, progress_desc, progress_bar, start_button, end_button]
         )
         
+        # Monitor F1 tab (using the same monitor function for now, assuming job IDs are unique)
+        f1_current_job_id.change(
+            fn=monitor_fn,
+            inputs=[f1_current_job_id],
+            outputs=[f1_result_video, f1_current_job_id, f1_preview_image, f1_progress_desc, f1_progress_bar, f1_start_button, f1_end_button]
+        )
+
+        # Connect F1 end button
+        f1_end_button.click(
+            fn=end_process_with_update,
+            outputs=[f1_queue_status] # Update F1 queue status display
+        )
+
         # Set up auto-refresh for queue status
         refresh_timer.change(
             fn=update_queue_status_fn,
-            outputs=[queue_status]
+            # Update both queue displays
+            outputs=[queue_status, f1_queue_status]
         )
-        
+
+
         # Connect LoRA upload in management tab
         lora_upload.change(
             fn=handle_lora_upload,
@@ -388,7 +548,14 @@ def create_interface(
             inputs=[json_upload],
             outputs=[prompt, seed] + lora_values
         )
-
+        
+        # Connect F1 JSON metadata loader
+        f1_json_upload.change(
+            fn=load_metadata_from_json, # Reuse same function for now
+            inputs=[f1_json_upload],
+            outputs=[f1_prompt, f1_seed] + lora_values # Update F1 components
+        )
+ 
         # Function to update slider visibility based on selection
         def update_lora_sliders(selected_loras):
             updates = []
