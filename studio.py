@@ -729,7 +729,10 @@ def worker(
                 generated_latents = torch.cat([start_latent.to(generated_latents), generated_latents], dim=2)
 
             total_generated_latent_frames += int(generated_latents.shape[2])
-            history_latents = torch.cat([generated_latents.to(history_latents), history_latents], dim=2)
+            if model_type == "Original":
+                history_latents = torch.cat([generated_latents.to(history_latents), history_latents], dim=2)
+            else:  # F1 model
+                history_latents = torch.cat([history_latents, generated_latents.to(history_latents)], dim=2)
 
             if not high_vram:
                 if selected_loras:
