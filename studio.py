@@ -1027,10 +1027,13 @@ interface = create_interface( # Pass populated lora_names here
     lora_names=lora_names # Explicitly pass the found LoRA names
 )
 
+# Set Gradio temp directory
+os.environ["GRADIO_TEMP_DIR"] = settings.get("gradio_temp_dir")
+
 # Launch the interface
 interface.launch(
     server_name=args.server,
     server_port=args.port,
     share=args.share,
-    inbrowser=args.inbrowser,
+    inbrowser=args.inbrowser
 )

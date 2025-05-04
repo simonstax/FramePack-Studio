@@ -356,6 +356,7 @@ def create_interface(
                             value=settings.get("lora_dir"),
                             placeholder="Path to LoRA models"
                         )
+                        gradio_temp_dir = gr.Textbox(label="Gradio Temporary Directory", value=settings.get("gradio_temp_dir"))
                         auto_save = gr.Checkbox(
                             label="Auto-save settings",
                             value=settings.get("auto_save_settings", True)
@@ -369,7 +370,9 @@ def create_interface(
                             info="Select the Gradio UI theme. Requires restart."
                         )
                         save_btn = gr.Button("Save Settings")
+                        cleanup_btn = gr.Button("Clean Up Temporary Files")
                         status = gr.HTML("")
+                        cleanup_output = gr.Textbox(label="Cleanup Status", interactive=False)
 
                         def save_settings(output_dir, metadata_dir, lora_dir, auto_save, selected_theme): # Added selected_theme
                             try:
@@ -388,6 +391,35 @@ def create_interface(
                             fn=save_settings,
                             inputs=[output_dir, metadata_dir, lora_dir, auto_save, theme_dropdown], # Added theme_dropdown
                             outputs=[status]
+                        )
+
+                        def cleanup_temp_files():
+                            """Clean up temporary files in the Gradio temp directory"""
+                            temp_dir = settings.get("gradio_temp_dir")
+                            if not temp_dir or not os.path.exists(temp_dir):
+                                return "No temporary directory found or directory does not exist."
+                            
+                            try:
+                                # Get all files in the temp directory
+                                files = os.listdir(temp_dir)
+                                removed_count = 0
+                                
+                                for file in files:
+                                    file_path = os.path.join(temp_dir, file)
+                                    try:
+                                        if os.path.isfile(file_path):
+                                            os.remove(file_path)
+                                            removed_count += 1
+                                    except Exception as e:
+                                        print(f"Error removing {file_path}: {e}")
+                                
+                                return f"Cleaned up {removed_count} temporary files."
+                            except Exception as e:
+                                return f"Error cleaning up temporary files: {str(e)}"
+
+                        cleanup_btn.click(
+                            fn=cleanup_temp_files,
+                            outputs=[cleanup_output]
                         )
 
         # --- Event Handlers and Connections (Now correctly indented) ---
@@ -674,6 +706,36 @@ def create_interface(
                 print(f"Error getting queue stats: {e}")
                 return "<p style='margin:0;color:white;'>Error loading queue stats</p>"
 
+        # Add footer with social links
+        with gr.Row(elem_id="footer"):
+            with gr.Column(scale=1):
+                gr.HTML("""
+                <div style="text-align: center; padding: 20px; color: #666;">
+                    <div style="margin-top: 10px;">
+                        <a href="https://patreon.com/Colinu" target="_blank" style="margin: 0 10px; color: #666; text-decoration: none;">
+                            <i class="fab fa-patreon"></i>Support on Patreon
+                        </a>
+                        <a href="https://discord.gg/MtuM7gFJ3V" target="_blank" style="margin: 0 10px; color: #666; text-decoration: none;">
+                            <i class="fab fa-discord"></i> Discord
+                        </a>
+                        <a href="https://github.com/colinurbs/FramePack-Studio" target="_blank" style="margin: 0 10px; color: #666; text-decoration: none;">
+                            <i class="fab fa-github"></i> GitHub
+                        </a>
+                    </div>
+                </div>
+                """)
+
+        # Add CSS for footer
+        css += """
+        #footer {
+            margin-top: 20px;
+            padding: 20px;
+            border-top: 1px solid #eee;
+        }
+        #footer a:hover {
+            color: #4f46e5 !important;
+        }
+        """
 
     return block
 

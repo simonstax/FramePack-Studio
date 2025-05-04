@@ -16,6 +16,7 @@ class Settings:
             "output_dir": str(project_root / "outputs"),
             "metadata_dir": str(project_root / "outputs"),
             "lora_dir": str(project_root / "loras"),
+            "gradio_temp_dir": str(project_root / "temp"),
             "auto_save_settings": True,
             "gradio_theme": "default"
         }
@@ -36,20 +37,26 @@ class Settings:
                 return self.default_settings.copy()
         return self.default_settings.copy()
 
-    def save_settings(self) -> bool:
-        """Save current settings to file"""
-        try:
-            # Ensure directories exist
-            os.makedirs(self.settings["output_dir"], exist_ok=True)
-            os.makedirs(self.settings["metadata_dir"], exist_ok=True)
-            os.makedirs(self.settings["lora_dir"], exist_ok=True)
-            
-            with open(self.settings_file, 'w') as f:
-                json.dump(self.settings, f, indent=2)
-            return True
-        except Exception as e:
-            print(f"Error saving settings: {e}")
-            return False
+    def save_settings(self, output_dir, metadata_dir, lora_dir, gradio_temp_dir, auto_save_settings, gradio_theme="default"):
+        """Save settings to file"""
+        self.settings = {
+            "output_dir": output_dir,
+            "metadata_dir": metadata_dir,
+            "lora_dir": lora_dir,
+            "gradio_temp_dir": gradio_temp_dir,
+            "auto_save_settings": auto_save_settings,
+            "gradio_theme": gradio_theme
+        }
+        
+        # Ensure directories exist
+        os.makedirs(output_dir, exist_ok=True)
+        os.makedirs(metadata_dir, exist_ok=True)
+        os.makedirs(lora_dir, exist_ok=True)
+        os.makedirs(gradio_temp_dir, exist_ok=True)
+        
+        # Save to file
+        with open(self.settings_file, 'w') as f:
+            json.dump(self.settings, f, indent=4)
 
     def get(self, key: str, default: Any = None) -> Any:
         """Get a setting value"""
