@@ -125,7 +125,11 @@ def create_interface(
                             height=420,
                             elem_classes="contain-image"
                         )
-
+                        resolution = gr.Slider(
+                            label="Output Resolution (Width)", minimum=128, maximum=768, value=256, 
+                            step=32, info="Nearest bucket (~WxH) will be used. Height adjusted automatically."
+                        )
+                
                         with gr.Accordion("Latent Image Options", open=False):
                             latent_type = gr.Dropdown(
                                 ["Black", "White", "Noise", "Green Screen"], label="Latent Image", value="Black", info="Used as a starting point if no image is provided"
@@ -210,6 +214,10 @@ def create_interface(
                             label="Image (optional)",
                             height=420,
                             elem_classes="contain-image"
+                        )
+                        f1_resolution = gr.Slider(
+                            label="Output Resolution (Width)", minimum=128, maximum=768, value=256, 
+                            step=32, info="Nearest bucket (~WxH) will be used. Height adjusted automatically."
                         )
 
                         with gr.Accordion("Latent Image Options", open=False):
@@ -387,7 +395,7 @@ def create_interface(
         # Connect the main process function (wrapper for adding to queue)
         def process_with_queue_update(model_type, *args):
             # Extract all arguments (ensure order matches inputs lists)
-            input_image, prompt_text, n_prompt, seed_value, total_second_length, latent_window_size, steps, cfg, gs, rs, gpu_memory_preservation, use_teacache, mp4_crf, randomize_seed_checked, save_metadata_checked, blend_sections, latent_type, clean_up_videos, selected_loras, *lora_args = args
+            input_image, prompt_text, n_prompt, seed_value, total_second_length, latent_window_size, steps, cfg, gs, rs, gpu_memory_preservation, use_teacache, mp4_crf, randomize_seed_checked, save_metadata_checked, blend_sections, latent_type, clean_up_videos, selected_loras, resolution, *lora_args = args
 
             # DO NOT parse the prompt here. Parsing happens once in the worker.
 
@@ -396,7 +404,7 @@ def create_interface(
             # Pass the model_type and the ORIGINAL prompt_text string to the backend process function
             result = process_fn(model_type, input_image, prompt_text, n_prompt, seed_value, total_second_length, # Pass original prompt_text string
                             latent_window_size, steps, cfg, gs, rs, gpu_memory_preservation,
-                            use_teacache, mp4_crf, save_metadata_checked, blend_sections, latent_type, clean_up_videos, selected_loras, *lora_args)
+                            use_teacache, mp4_crf, save_metadata_checked, blend_sections, latent_type, clean_up_videos, selected_loras, resolution, *lora_args)
 
             # If randomize_seed is checked, generate a new random seed for the next job
             new_seed_value = None
@@ -448,7 +456,8 @@ def create_interface(
             blend_sections,
             latent_type,
             clean_up_videos,
-            lora_selector
+            lora_selector,
+            resolution
         ]
         # Add LoRA sliders to the input list
         ips.extend([lora_sliders[lora] for lora in lora_names])
@@ -473,7 +482,8 @@ def create_interface(
             f1_blend_sections,
             f1_latent_type,
             f1_clean_up_videos,
-            f1_lora_selector
+            f1_lora_selector,
+            f1_resolution
         ]
         # Add F1 LoRA sliders to the input list
         f1_ips.extend([f1_lora_sliders[lora] for lora in lora_names])
@@ -578,7 +588,7 @@ def create_interface(
             if not json_path:
                 # Return updates for all potentially affected components
                 num_orig_sliders = len(lora_sliders)
-                return [gr.update(), gr.update()] + [gr.update()] * num_orig_sliders
+                return [gr.update()] * (2 + num_orig_sliders)
 
             try:
                 import json
@@ -615,7 +625,7 @@ def create_interface(
             except Exception as e:
                 print(f"Error loading metadata: {e}")
                 num_orig_sliders = len(lora_sliders)
-                return [gr.update(), gr.update()] + [gr.update()] * num_orig_sliders
+                return [gr.update()] * (2 + num_orig_sliders)
 
 
         # Connect JSON metadata loader for Original tab

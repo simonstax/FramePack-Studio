@@ -843,6 +843,7 @@ def process(
         latent_type,
         clean_up_videos,
         selected_loras,
+        resolution,
         *lora_values   
     ):
     
