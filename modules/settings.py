@@ -11,7 +11,8 @@ class Settings:
             "output_dir": str(Path.home() / "Videos" / "FramePack"),
             "metadata_dir": str(Path.home() / "Videos" / "FramePack" / "metadata"),
             "lora_dir": str(Path.home() / "FramePack" / "loras"),
-            "auto_save_settings": True
+            "auto_save_settings": True,
+            "gradio_theme": "default"
         }
         self.settings = self.load_settings()
 
@@ -59,4 +60,4 @@ class Settings:
         """Update multiple settings at once"""
         self.settings.update(settings)
         if self.settings.get("auto_save_settings", True):
-            self.save_settings() 
+            self.save_settings()

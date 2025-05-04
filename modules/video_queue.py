@@ -59,8 +59,12 @@ class Job:
     input_image: Optional[np.ndarray] = None
     latent_type: Optional[str] = None
     thumbnail: Optional[str] = None
+    generation_type: Optional[str] = None # Added generation_type
 
     def __post_init__(self):
+        # Store generation type
+        self.generation_type = self.params.get('model_type', 'Original') # Initialize generation_type
+
         # Store input image or latent type
         if 'input_image' in self.params and self.params['input_image'] is not None:
             self.input_image = self.params['input_image']
