@@ -65,7 +65,8 @@ def create_interface(
                             height=420,
                             elem_classes="contain-image"
                         )
-
+                        resolution = gr.Slider(label="Output Resolution (Width)", minimum=128, maximum=768, value=256, step=32, info="Nearest bucket (~WxH) will be used. Height adjusted automatically.")
+                
                         with gr.Accordion("Latent Image Options", open=False):
 
                             latent_type = gr.Dropdown(
