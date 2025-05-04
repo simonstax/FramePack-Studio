@@ -451,21 +451,21 @@ def worker(
                 "resolution": resolution,  # Add resolution to metadata
                 "model_type": model_type  # Add model type to metadata
             }
-            # Add LoRA information to metadata if LoRAs are used
-            if selected_loras and len(selected_loras) > 0:
-                lora_data = {}
-                for i, lora_name in enumerate(selected_loras):
-                    # Get the corresponding weight if available
-                    weight = lora_values[i] if lora_values and i < len(lora_values) else 1.0
-                    # Handle case where weight might be a list
-                    if isinstance(weight, list):
-                        # If it's a list, use the first element or default to 1.0
-                        weight_value = weight[0] if weight and len(weight) > 0 else 1.0
-                    else:
-                        weight_value = weight
-                    lora_data[lora_name] = float(weight_value)
+            # # Add LoRA information to metadata if LoRAs are used
+            # if selected_loras and len(selected_loras) > 0:
+            #     lora_data = {}
+            #     for i, lora_name in enumerate(selected_loras):
+            #         # Get the corresponding weight if available
+            #         weight = lora_values[i] if lora_values and i < len(lora_values) else 1.0
+            #         # Handle case where weight might be a list
+            #         if isinstance(weight, list):
+            #             # If it's a list, use the first element or default to 1.0
+            #             weight_value = weight[0] if weight and len(weight) > 0 else 1.0
+            #         else:
+            #             weight_value = weight
+            #         lora_data[lora_name] = float(weight_value)
                 
-                metadata_dict["loras"] = lora_data
+            #     metadata_dict["loras"] = lora_data
 
             with open(os.path.join(metadata_dir, f'{job_id}.json'), 'w') as f:
                 json.dump(metadata_dict, f, indent=2)

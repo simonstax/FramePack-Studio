@@ -5,9 +5,10 @@ FramePack Studio is an enhanced version of the FramePack demo script, designed t
 
 ## Current Features
 
+- **F1 and Original FramePack Models**: Define different prompts for specific time segments in your video
 - **Timestamped Prompts**: Define different prompts for specific time segments in your video
 - **Prompt Blending**: Define the blending time between timestamped prompts
-- **Basic LoRA Support**: Works with most (all?) hunyuan LoRAs but the implementation is a bit rough around the edges
+- **Basic LoRA Support**: Works with most (all?) hunyuan LoRAs
 - **Queue System**: Process multiple generation jobs without blocking the interface
 - **Metadata Saving/Import**: Prompt and seed are encoded into the output PNG, all other generation metadata is saved in a JSON file
 - **I2V and T2V**: Works with or without an input image to allow for more flexibility when working with standard LoRAs
@@ -23,22 +24,13 @@ FramePack Studio is an enhanced version of the FramePack demo script, designed t
 
 ### Setup
 
+Install via the Pinokio community script "FP-Studio" or:
+
 1. Clone the repository:
    ```bash
    git clone https://github.com/colinurbs/FramePack-Studio.git
    cd FramePack-Studio
    ```
-
-2. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-## Add to an Existing FramePack Installation
-
-### Setup
-
-1. Drop studio.py, requirements.txt and the modules folder into the same folder as the demo script in your install. Drop /diffusers_helper/lora_utils.py into your diffusers_helper folder.
 
 2. Install dependencies:
    ```bash
@@ -82,7 +74,7 @@ Many thanks to [Lvmin Zhang](https://github.com/lllyasviel) for the absolutely a
 
 Thanks to [Rickard Edén](https://github.com/neph1) for the LoRA code and their general contributions to this growing FramePack scene!
 
-Thanks to everyone who has sumbitted a PR or helped with testing!
+Thanks to everyone who has joined the Discord, reported a bug, sumbitted a PR or helped with testing!
 
 
 
