@@ -22,7 +22,7 @@ def create_interface(
     load_lora_file_fn,
     job_queue,
     settings,
-    default_prompt: str = '"[1s: The person waves hello] [3s: The person jumps up and down] [5s: The person does a dance]',
+    default_prompt: str = '[1s: The person waves hello] [3s: The person jumps up and down] [5s: The person does a dance]',
     lora_names: list = [],
     lora_values: list = []
 ):
@@ -105,8 +105,8 @@ def create_interface(
 
         with gr.Row(elem_id="fixed-toolbar"):
             gr.Markdown("<h1 style='margin:0;color:white;'>FramePack Studio</h1>")
-            with gr.Column(scale=1):
-                # queue_stats_display = gr.Markdown("<p style='margin:0;color:white;'>Queue: 0 | Completed: 0</p>")
+            # with gr.Column(scale=1):
+            #     queue_stats_display = gr.Markdown("<p style='margin:0;color:white;'>Queue: 0 | Completed: 0</p>")
             with gr.Column(scale=0):
                 refresh_stats_btn = gr.Button("⟳", elem_id="refresh-stats-btn")
 
@@ -522,7 +522,7 @@ def create_interface(
 
         # --- Connect Queue Refresh ---
         refresh_stats_btn.click(
-            fn=lambda: (get_queue_stats(), update_queue_status_fn()), # Use update_queue_status_fn passed in
+            fn=lambda: update_queue_status_fn(), # Use update_queue_status_fn passed in
             inputs=None,
             outputs=[queue_status]  # Removed queue_stats_display from outputs
         )
