@@ -5,6 +5,10 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Dict, Any, Optional, List
 import queue as queue_module  # Renamed to avoid conflicts
+import io
+import base64
+from PIL import Image
+import numpy as np
 
 from diffusers_helper.thread_utils import AsyncStream
 
@@ -43,15 +47,43 @@ class JobStatus(Enum):
 class Job:
     id: str
     params: Dict[str, Any]
-    status: JobStatus
-    created_at: float
+    status: JobStatus = JobStatus.PENDING
+    created_at: float = field(default_factory=time.time)
     started_at: Optional[float] = None
     completed_at: Optional[float] = None
-    result: Optional[str] = None  # Path to output video
     error: Optional[str] = None
-    progress_data: Dict[str, Any] = field(default_factory=dict)  # Store latest progress data
-    stream: Optional[AsyncStream] = None  # Stream for this job
-    queue_position: Optional[int] = None  # Position in queue for display
+    result: Optional[str] = None
+    progress_data: Optional[Dict] = None
+    queue_position: Optional[int] = None
+    stream: Optional[Any] = None
+    input_image: Optional[np.ndarray] = None
+    latent_type: Optional[str] = None
+    thumbnail: Optional[str] = None
+
+    def __post_init__(self):
+        # Store input image or latent type
+        if 'input_image' in self.params and self.params['input_image'] is not None:
+            self.input_image = self.params['input_image']
+            # Create thumbnail
+            img = Image.fromarray(self.input_image)
+            img.thumbnail((100, 100))
+            buffered = io.BytesIO()
+            img.save(buffered, format="PNG")
+            self.thumbnail = f"data:image/png;base64,{base64.b64encode(buffered.getvalue()).decode()}"
+        elif 'latent_type' in self.params:
+            self.latent_type = self.params['latent_type']
+            # Create a colored square based on latent type
+            color_map = {
+                "Black": (0, 0, 0),
+                "White": (255, 255, 255),
+                "Noise": (128, 128, 128),
+                "Green Screen": (0, 177, 64)
+            }
+            color = color_map.get(self.latent_type, (0, 0, 0))
+            img = Image.new('RGB', (100, 100), color)
+            buffered = io.BytesIO()
+            img.save(buffered, format="PNG")
+            self.thumbnail = f"data:image/png;base64,{base64.b64encode(buffered.getvalue()).decode()}"
 
 
 class VideoJobQueue:

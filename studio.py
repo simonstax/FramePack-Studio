@@ -455,7 +455,7 @@ def worker(
             desc = f'Total generated frames: {int(max(0, total_generated_latent_frames * 4 - 3))}, ' \
                    f'Video length: {max(0, (total_generated_latent_frames * 4 - 3) / 30):.2f} seconds (FPS-30). ' \
                    f'Current position: {current_pos:.2f}s (original: {original_pos:.2f}s). ' \
-                   f'using prompt: {current_prompt[:60]}...'
+                   f'using prompt: {current_prompt[:256]}...'
 
             progress_data = {
                 'preview': preview,

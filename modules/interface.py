@@ -4,6 +4,10 @@ import datetime
 import random
 import os
 from typing import List, Dict, Any, Optional
+from PIL import Image
+import numpy as np
+import base64
+import io
 
 from modules.video_queue import JobStatus, Job
 from modules.prompt_handler import get_section_boundaries, get_quick_prompts
@@ -80,7 +84,16 @@ def create_interface(
         color:white;
     }
     body, .gradio-container {
-        padding-top: 60px !important; /* Adjust if your toolbar is taller */
+        padding-top: 40px !important; 
+    }
+    """
+
+    css += """
+    .narrow-button {
+        min-width: 40px !important;
+        width: 40px !important;
+        padding: 0 !important;
+        margin: 0 !important;
     }
     """
 
@@ -90,9 +103,12 @@ def create_interface(
 
         with gr.Row(elem_id="fixed-toolbar"):
             gr.Markdown("<h1 style='margin:0;color:white;'>FramePack Studio</h1>")
-            queue_stats_display = gr.Markdown("<p style='margin:0;color:white;'>Queue: 0 | Completed: 0</p>")
-            refresh_stats_btn = gr.Button("Refresh", elem_id="refresh-stats-btn")
-            start_button = gr.Button(value="Add to Queue", elem_id="toolbar-add-to-queue-btn")
+            with gr.Column(scale=1):
+                queue_stats_display = gr.Markdown("<p style='margin:0;color:white;'>Queue: 0 | Completed: 0</p>")
+            with gr.Column(scale=0):
+                refresh_stats_btn = gr.Button("⟳", elem_id="refresh-stats-btn")
+            with gr.Column(scale=1):
+                start_button = gr.Button(value="Add to Queue", elem_id="toolbar-add-to-queue-btn")
         
         
         with gr.Tabs():
@@ -184,17 +200,46 @@ def create_interface(
             with gr.Tab("Queue"):
                 with gr.Row():
                     with gr.Column():
-                        queue_status = gr.DataFrame(
-                            headers=["Job ID", "Status", "Created", "Started", "Completed", "Elapsed"],
-                            datatype=["str", "str", "str", "str", "str", "str"],
-                            label="Job Queue"
-                        )
-                        refresh_button = gr.Button("Refresh Queue")
-                        refresh_button.click(
-                            fn=update_queue_status_fn,
-                            inputs=[],
-                            outputs=[queue_status]
-                        )
+                        # Create a container for the queue status
+                        with gr.Row():
+                            queue_status = gr.DataFrame(
+                                headers=["Job ID", "Status", "Created", "Started", "Completed", "Elapsed", "Preview"],
+                                datatype=["str", "str", "str", "str", "str", "str", "image"],
+                                label="Job Queue"
+                            )
+                        with gr.Row():
+                            refresh_button = gr.Button("Refresh Queue")
+                            refresh_button.click(
+                                fn=update_queue_status_fn,
+                                inputs=[],
+                                outputs=[queue_status]
+                            )
+                        # Create a container for thumbnails
+                        with gr.Row():
+                            thumbnail_container = gr.Column()
+                            thumbnail_container.elem_classes = ["thumbnail-container"]
+
+                        # Add CSS for thumbnails
+                        css += """
+                        .thumbnail-container {
+                            display: flex;
+                            flex-wrap: wrap;
+                            gap: 10px;
+                            padding: 10px;
+                        }
+                        .thumbnail-item {
+                            width: 100px;
+                            height: 100px;
+                            border: 1px solid #444;
+                            border-radius: 4px;
+                            overflow: hidden;
+                        }
+                        .thumbnail-item img {
+                            width: 100%;
+                            height: 100%;
+                            object-fit: cover;
+                        }
+                        """
 
             with gr.Tab("Settings"):
                 with gr.Row():
@@ -295,19 +340,21 @@ def create_interface(
                 
                 # Count jobs by status
                 status_counts = {
-                    JobStatus.QUEUED: 0,
-                    JobStatus.RUNNING: 0,
-                    JobStatus.COMPLETED: 0,
-                    JobStatus.FAILED: 0,
-                    JobStatus.CANCELLED: 0
+                    "QUEUED": 0,
+                    "RUNNING": 0,
+                    "COMPLETED": 0,
+                    "FAILED": 0,
+                    "CANCELLED": 0
                 }
                 
                 for job in jobs:
                     if hasattr(job, 'status'):
-                        status_counts[job.status] = status_counts.get(job.status, 0) + 1
+                        status = str(job.status)
+                        if status in status_counts:
+                            status_counts[status] += 1
                 
                 # Format the display text
-                stats_text = f"Queue: {status_counts[JobStatus.QUEUED]} | Running: {status_counts[JobStatus.RUNNING]} | Completed: {status_counts[JobStatus.COMPLETED]} | Failed: {status_counts[JobStatus.FAILED]} | Cancelled: {status_counts[JobStatus.CANCELLED]}"
+                stats_text = f"Queue: {status_counts['QUEUED']} | Running: {status_counts['RUNNING']} | Completed: {status_counts['COMPLETED']} | Failed: {status_counts['FAILED']} | Cancelled: {status_counts['CANCELLED']}"
                 
                 return f"<p style='margin:0;color:white;'>{stats_text}</p>"
                 
@@ -375,6 +422,74 @@ def create_interface(
             outputs=[prompt, seed] + [lora_sliders[lora] for lora in lora_names]
         )
 
+        def format_queue_status(jobs):
+            """Format job data for display in the queue status table"""
+            rows = []
+            for job in jobs:
+                created = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(job.created_at)) if job.created_at else ""
+                started = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(job.started_at)) if job.started_at else ""
+                completed = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(job.completed_at)) if job.completed_at else ""
+
+                # Calculate elapsed time
+                elapsed_time = ""
+                if job.started_at:
+                    if job.completed_at:
+                        start_datetime = datetime.datetime.fromtimestamp(job.started_at)
+                        complete_datetime = datetime.datetime.fromtimestamp(job.completed_at)
+                        elapsed_seconds = (complete_datetime - start_datetime).total_seconds()
+                        elapsed_time = f"{elapsed_seconds:.2f}s"
+                    else:
+                        # For running jobs, calculate elapsed time from now
+                        start_datetime = datetime.datetime.fromtimestamp(job.started_at)
+                        current_datetime = datetime.datetime.now()
+                        elapsed_seconds = (current_datetime - start_datetime).total_seconds()
+                        elapsed_time = f"{elapsed_seconds:.2f}s (running)"
+
+                position = job.queue_position if hasattr(job, 'queue_position') else ""
+
+                # Convert base64 thumbnail to PIL Image for Gradio
+                thumbnail = None
+                if job.thumbnail:
+                    try:
+                        # Extract base64 data from data URL
+                        base64_data = job.thumbnail.split(',')[1]
+                        # Convert base64 to bytes
+                        image_bytes = base64.b64decode(base64_data)
+                        # Convert bytes to PIL Image
+                        thumbnail = Image.open(io.BytesIO(image_bytes))
+                    except Exception as e:
+                        print(f"Error converting thumbnail: {e}")
+
+                rows.append([
+                    job.id[:6] + '...',
+                    job.status.value,
+                    created,
+                    started,
+                    completed,
+                    elapsed_time,
+                    thumbnail  # Put thumbnail in the last column to match DataFrame headers
+                ])
+            return rows
+
+        # Create the queue status update function
+        def update_queue_status_with_thumbnails():
+            jobs = job_queue.get_all_jobs()
+            for job in jobs:
+                if job.status == JobStatus.PENDING:
+                    job.queue_position = job_queue.get_queue_position(job.id)
+            
+            if job_queue.current_job:
+                job_queue.current_job.status = JobStatus.RUNNING
+            
+            return format_queue_status(jobs)
+
+        # Connect the refresh button
+        refresh_button.click(
+            fn=update_queue_status_with_thumbnails,
+            inputs=[],
+            outputs=[queue_status]
+        )
+
     return block
 
 
@@ -403,12 +518,26 @@ def format_queue_status(jobs):
 
         position = job.queue_position if hasattr(job, 'queue_position') else ""
 
+        # Convert base64 thumbnail to PIL Image for Gradio
+        thumbnail = None
+        if job.thumbnail:
+            try:
+                # Extract base64 data from data URL
+                base64_data = job.thumbnail.split(',')[1]
+                # Convert base64 to bytes
+                image_bytes = base64.b64decode(base64_data)
+                # Convert bytes to PIL Image
+                thumbnail = Image.open(io.BytesIO(image_bytes))
+            except Exception as e:
+                print(f"Error converting thumbnail: {e}")
+
         rows.append([
             job.id[:6] + '...',
             job.status.value,
             created,
             started,
             completed,
-            elapsed_time
+            elapsed_time,
+            thumbnail  # Put thumbnail in the last column to match DataFrame headers
         ])
     return rows
