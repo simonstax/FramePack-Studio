@@ -126,7 +126,7 @@ def create_interface(
                             elem_classes="contain-image"
                         )
                         resolution = gr.Slider(
-                            label="Output Resolution (Width)", minimum=128, maximum=768, value=256, 
+                            label="Output Resolution (Width)", minimum=128, maximum=768, value=512, 
                             step=32, info="Nearest bucket (~WxH) will be used. Height adjusted automatically."
                         )
                 
@@ -216,7 +216,7 @@ def create_interface(
                             elem_classes="contain-image"
                         )
                         f1_resolution = gr.Slider(
-                            label="Output Resolution (Width)", minimum=128, maximum=768, value=256, 
+                            label="Output Resolution (Width)", minimum=128, maximum=768, value=512, 
                             step=32, info="Nearest bucket (~WxH) will be used. Height adjusted automatically."
                         )
 
