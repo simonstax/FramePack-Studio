@@ -515,11 +515,14 @@ def worker(
         history_pixels = None
         if model_type == "Original":
             total_generated_latent_frames = 0
-
-        latent_paddings = reversed(range(total_latent_sections))
-
-        if total_latent_sections > 4:
-            latent_paddings = [3] + [2] * (total_latent_sections - 3) + [1, 0]
+            # Original model uses reversed latent paddings
+            latent_paddings = reversed(range(total_latent_sections))
+            if total_latent_sections > 4:
+                latent_paddings = [3] + [2] * (total_latent_sections - 3) + [1, 0]
+        else:  # F1 model
+            # F1 model doesn't use latent paddings in the same way
+            # We'll use a fixed approach with just 0 for last section and 1 for others
+            latent_paddings = [1] * (total_latent_sections - 1) + [0]
 
         # PROMPT BLENDING: Track section index
         section_idx = 0
@@ -687,9 +690,20 @@ def worker(
                   f'time position: {current_time_position:.2f}s (original: {original_time_position:.2f}s), '
                   f'using prompt: {current_prompt[:60]}...')
 
-            indices = torch.arange(0, sum([1, latent_padding_size, latent_window_size, 1, 2, 16])).unsqueeze(0)
-            clean_latent_indices_pre, blank_indices, latent_indices, clean_latent_indices_post, clean_latent_2x_indices, clean_latent_4x_indices = indices.split([1, latent_padding_size, latent_window_size, 1, 2, 16], dim=1)
-            clean_latent_indices = torch.cat([clean_latent_indices_pre, clean_latent_indices_post], dim=1)
+            if model_type == "Original":
+                # Original model uses the standard indices approach
+                indices = torch.arange(0, sum([1, latent_padding_size, latent_window_size, 1, 2, 16])).unsqueeze(0)
+                clean_latent_indices_pre, blank_indices, latent_indices, clean_latent_indices_post, clean_latent_2x_indices, clean_latent_4x_indices = indices.split([1, latent_padding_size, latent_window_size, 1, 2, 16], dim=1)
+                clean_latent_indices = torch.cat([clean_latent_indices_pre, clean_latent_indices_post], dim=1)
+            else:  # F1 model
+                # F1 model uses a different indices approach
+                # latent_window_sizeが4.5の場合は特別に5を使用
+                effective_window_size = 5 if latent_window_size == 4.5 else int(latent_window_size)
+                indices = torch.arange(0, sum([1, 16, 2, 1, latent_window_size])).unsqueeze(0)
+                clean_latent_indices_start, clean_latent_4x_indices, clean_latent_2x_indices, clean_latent_1x_indices, latent_indices = indices.split([1, 16, 2, 1, latent_window_size], dim=1)
+                clean_latent_indices = torch.cat([clean_latent_indices_start, clean_latent_1x_indices], dim=1)
+                
+                print(f"F1 model indices: clean_latent_indices shape={clean_latent_indices.shape}, latent_indices shape={latent_indices.shape}")
 
             if model_type == "Original":
                 clean_latents_pre = start_latent.to(history_latents)
@@ -700,6 +714,9 @@ def worker(
                 clean_latents_4x, clean_latents_2x, clean_latents_1x = history_latents[:, :, -sum([16, 2, 1]):, :, :].split([16, 2, 1], dim=2)
                 # For F1, we prepend the start latent to clean_latents_1x
                 clean_latents = torch.cat([start_latent.to(history_latents), clean_latents_1x], dim=2)
+                
+                # Print debug info for F1 model
+                print(f"F1 model section {section_idx+1}/{total_latent_sections}, latent_padding={latent_padding}")
 
             if not high_vram:
                 # Unload VAE etc. before loading transformer
@@ -773,8 +790,18 @@ def worker(
                     history_pixels = soft_append_bcthw(current_pixels, history_pixels, overlapped_frames)
                 else:  # F1 model
                     # For F1, we take frames from the end
+                    print(f"F1 model section {section_idx+1}/{total_latent_sections}, section_latent_frames={section_latent_frames}")
+                    print(f"F1 model real_history_latents shape: {real_history_latents.shape}, taking last {section_latent_frames} frames")
+                    
+                    # Get the frames from the end of real_history_latents
                     current_pixels = vae_decode(real_history_latents[:, :, -section_latent_frames:], vae).cpu()
+                    
+                    print(f"F1 model current_pixels shape: {current_pixels.shape}, history_pixels shape: {history_pixels.shape if history_pixels is not None else 'None'}")
+                    
+                    # For F1 model, history_pixels is first, current_pixels is second
                     history_pixels = soft_append_bcthw(history_pixels, current_pixels, overlapped_frames)
+                    
+                    print(f"F1 model after append, history_pixels shape: {history_pixels.shape}")
 
             if not high_vram:
                 unload_complete_models()
