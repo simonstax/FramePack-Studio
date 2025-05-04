@@ -72,16 +72,22 @@ def find_nearest_bucket(h, w, resolution=640):
     else:
         print(f"Resolution {resolution} found in bucket options")
     
+    # Calculate the aspect ratio of the input image
+    input_aspect_ratio = w / h if h > 0 else 1.0
+    print(f"Input aspect ratio: {input_aspect_ratio:.4f}")
+    
     min_diff = float('inf')
     best_bucket = None
     
-    # Find the bucket size where the first parameter (width) is closest to the slider value
+    # Find the bucket size with the closest aspect ratio to the input image
     for (bucket_h, bucket_w) in bucket_options[resolution]:
-        diff = abs(bucket_w - resolution)
+        bucket_aspect_ratio = bucket_w / bucket_h if bucket_h > 0 else 1.0
+        # Calculate the difference in aspect ratios
+        diff = abs(bucket_aspect_ratio - input_aspect_ratio)
         if diff < min_diff:
             min_diff = diff
             best_bucket = (bucket_h, bucket_w)
-        print(f"  Checking bucket ({bucket_h}, {bucket_w}), diff={diff}, current best={best_bucket}")
+        print(f"  Checking bucket ({bucket_h}, {bucket_w}), aspect ratio={bucket_aspect_ratio:.4f}, diff={diff:.4f}, current best={best_bucket}")
     
     print(f"Using resolution {resolution}, selected bucket: {best_bucket}")
     return best_bucket
