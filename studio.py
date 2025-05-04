@@ -579,10 +579,16 @@ def worker(
             if original_pos < 0: original_pos = 0
 
             hint = f'Sampling {current_step}/{steps}'
-            desc = f'Total generated frames: {int(max(0, total_generated_latent_frames * 4 - 3))}, ' \
-                   f'Video length: {max(0, (total_generated_latent_frames * 4 - 3) / 30):.2f} seconds (FPS-30). ' \
-                   f'Current position: {current_pos:.2f}s (original: {original_pos:.2f}s). ' \
-                   f'using prompt: {current_prompt[:256]}...'
+            if model_type == "Original":
+                desc = f'Total generated frames: {int(max(0, total_generated_latent_frames * 4 - 3))}, ' \
+                       f'Video length: {max(0, (total_generated_latent_frames * 4 - 3) / 30):.2f} seconds (FPS-30). ' \
+                       f'Current position: {current_pos:.2f}s (original: {original_pos:.2f}s). ' \
+                       f'using prompt: {current_prompt[:256]}...'
+            else:  # F1 model
+                desc = f'Total generated frames: {int(max(0, total_generated_latent_frames * 4 - 3))}, ' \
+                       f'Video length: {max(0, (total_generated_latent_frames * 4 - 3) / 30):.2f} seconds (FPS-30). ' \
+                       f'Current position: {current_pos:.2f}s. ' \
+                       f'using prompt: {current_prompt[:256]}...'
 
             progress_data = {
                 'preview': preview,
@@ -740,7 +746,10 @@ def worker(
                 overlapped_frames = latent_window_size * 4 - 3
 
                 current_pixels = vae_decode(real_history_latents[:, :, :section_latent_frames], vae).cpu()
-                history_pixels = soft_append_bcthw(current_pixels, history_pixels, overlapped_frames)
+                if model_type == "Original":
+                    history_pixels = soft_append_bcthw(current_pixels, history_pixels, overlapped_frames)
+                else:  # F1 model
+                    history_pixels = soft_append_bcthw(history_pixels, current_pixels, overlapped_frames)
 
             if not high_vram:
                 unload_complete_models()
