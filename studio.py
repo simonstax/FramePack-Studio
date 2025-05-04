@@ -57,10 +57,10 @@ def verify_lora_state(transformer, label=""):
     for name, module in transformer.named_modules():
         if hasattr(module, 'lora_A') and module.lora_A:
             has_loras = True
-            print(f"[{label}] Found lora_A in module {name}")
+            # print(f"[{label}] Found lora_A in module {name}")
         if hasattr(module, 'lora_B') and module.lora_B:
             has_loras = True
-            print(f"[{label}] Found lora_B in module {name}")
+            # print(f"[{label}] Found lora_B in module {name}")
             
     if not has_loras:
         print(f"[{label}] No LoRA components found in transformer")
