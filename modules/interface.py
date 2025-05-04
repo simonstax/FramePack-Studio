@@ -144,8 +144,8 @@ def create_interface(
                                 total_second_length = gr.Slider(label="Video Length (Seconds)", minimum=1, maximum=120, value=5, step=0.1)
                             with gr.Row():
                                 resolution = gr.Slider(
-                                    label="Output Resolution (Width)", minimum=128, maximum=768, value=512, 
-                                    step=32, info="Nearest bucket (~WxH) will be used. Height adjusted automatically."
+                                    label="Output Resolution (Width)", minimum=128, maximum=768, value=640, 
+                                    step=32, info="Nearest valid bucket size will be used. Height will be adjusted automatically."
                                 )
                             with gr.Row("LoRAs"):
                                 lora_selector = gr.Dropdown(
@@ -235,8 +235,8 @@ def create_interface(
                                 f1_total_second_length = gr.Slider(label="Video Length (Seconds)", minimum=1, maximum=120, value=5, step=0.1)
                             with gr.Row():
                                 f1_resolution = gr.Slider(
-                                    label="Output Resolution (Width)", minimum=128, maximum=768, value=512, 
-                                    step=32, info="Nearest bucket (~WxH) will be used. Height adjusted automatically."
+                                    label="Output Resolution (Width)", minimum=128, maximum=768, value=640, 
+                                    step=32, info="Nearest valid bucket size will be used. Height will be adjusted automatically."
                                 )
                             with gr.Row("LoRAs"):
                                 f1_lora_selector = gr.Dropdown(

@@ -290,7 +290,8 @@ def worker(
     lora_values=None, 
     job_stream=None,
     output_dir=None,
-    metadata_dir=None
+    metadata_dir=None,
+    resolution=640  # Add resolution parameter with default value
 ):
     global transformer_original, transformer_f1, current_transformer, high_vram
     
@@ -424,7 +425,7 @@ def worker(
         stream_to_use.output_queue.push(('progress', (None, '', make_progress_bar_html(0, 'Image processing ...'))))
 
         H, W, C = input_image.shape
-        height, width = find_nearest_bucket(H, W, resolution=640)
+        height, width = find_nearest_bucket(H, W, resolution=resolution)
         input_image_np = resize_and_center_crop(input_image, target_width=width, target_height=height)
 
         if save_metadata:
@@ -446,7 +447,9 @@ def worker(
                 "blend_sections": blend_sections,
                 "latent_window_size": latent_window_size,
                 "mp4_crf": mp4_crf,
-                "timestamp": time.time()
+                "timestamp": time.time(),
+                "resolution": resolution,  # Add resolution to metadata
+                "model_type": model_type  # Add model type to metadata
             }
             # Add LoRA information to metadata if LoRAs are used
             if selected_loras and len(selected_loras) > 0:
@@ -500,9 +503,18 @@ def worker(
         rnd = torch.Generator("cpu").manual_seed(seed)
         num_frames = latent_window_size * 4 - 3
 
-        history_latents = torch.zeros(size=(1, 16, 1 + 2 + 16, height // 8, width // 8), dtype=torch.float32).cpu()
+        if model_type == "Original":
+            history_latents = torch.zeros(size=(1, 16, 1 + 2 + 16, height // 8, width // 8), dtype=torch.float32).cpu()
+        else:  # F1 model
+            # F1モードでは初期フレームを用意
+            history_latents = torch.zeros(size=(1, 16, 16 + 2 + 1, height // 8, width // 8), dtype=torch.float32).cpu()
+            # 開始フレームをhistory_latentsに追加
+            history_latents = torch.cat([history_latents, start_latent.to(history_latents)], dim=2)
+            total_generated_latent_frames = 1  # 最初のフレームを含むので1から開始
+
         history_pixels = None
-        total_generated_latent_frames = 0
+        if model_type == "Original":
+            total_generated_latent_frames = 0
 
         latent_paddings = reversed(range(total_latent_sections))
 
@@ -679,14 +691,20 @@ def worker(
             clean_latent_indices_pre, blank_indices, latent_indices, clean_latent_indices_post, clean_latent_2x_indices, clean_latent_4x_indices = indices.split([1, latent_padding_size, latent_window_size, 1, 2, 16], dim=1)
             clean_latent_indices = torch.cat([clean_latent_indices_pre, clean_latent_indices_post], dim=1)
 
-            clean_latents_pre = start_latent.to(history_latents)
-            clean_latents_post, clean_latents_2x, clean_latents_4x = history_latents[:, :, :1 + 2 + 16, :, :].split([1, 2, 16], dim=2)
-            clean_latents = torch.cat([clean_latents_pre, clean_latents_post], dim=2)
+            if model_type == "Original":
+                clean_latents_pre = start_latent.to(history_latents)
+                clean_latents_post, clean_latents_2x, clean_latents_4x = history_latents[:, :, :1 + 2 + 16, :, :].split([1, 2, 16], dim=2)
+                clean_latents = torch.cat([clean_latents_pre, clean_latents_post], dim=2)
+            else:  # F1 model
+                # For F1, we take the last frames for clean latents
+                clean_latents_4x, clean_latents_2x, clean_latents_1x = history_latents[:, :, -sum([16, 2, 1]):, :, :].split([16, 2, 1], dim=2)
+                # For F1, we prepend the start latent to clean_latents_1x
+                clean_latents = torch.cat([start_latent.to(history_latents), clean_latents_1x], dim=2)
 
             if not high_vram:
                 # Unload VAE etc. before loading transformer
                 unload_complete_models(vae, text_encoder, text_encoder_2, image_encoder)
-                move_model_to_device_with_memory_preservation(current_transformer, target_device=gpu, preserved_memory_gb=gpu_memory_preservation) # Use current_transformer
+                move_model_to_device_with_memory_preservation(current_transformer, target_device=gpu, preserved_memory_gb=gpu_memory_preservation)
                 if selected_loras:
                     move_lora_adapters_to_device(current_transformer, gpu)
 
@@ -725,22 +743,24 @@ def worker(
                 callback=callback,
             )
 
-            if is_last_section:
-                generated_latents = torch.cat([start_latent.to(generated_latents), generated_latents], dim=2)
-
             total_generated_latent_frames += int(generated_latents.shape[2])
             if model_type == "Original":
                 history_latents = torch.cat([generated_latents.to(history_latents), history_latents], dim=2)
             else:  # F1 model
+                # For F1, we append new frames to the end
                 history_latents = torch.cat([history_latents, generated_latents.to(history_latents)], dim=2)
 
             if not high_vram:
                 if selected_loras:
-                    move_lora_adapters_to_device(current_transformer, cpu) # Use current_transformer
-                offload_model_from_device_for_memory_preservation(current_transformer, target_device=gpu, preserved_memory_gb=8) # Use current_transformer
+                    move_lora_adapters_to_device(current_transformer, cpu)
+                offload_model_from_device_for_memory_preservation(current_transformer, target_device=gpu, preserved_memory_gb=8)
                 load_model_as_complete(vae, target_device=gpu)
 
-            real_history_latents = history_latents[:, :, :total_generated_latent_frames, :, :]
+            if model_type == "Original":
+                real_history_latents = history_latents[:, :, :total_generated_latent_frames, :, :]
+            else:  # F1 model
+                # For F1, we take frames from the end
+                real_history_latents = history_latents[:, :, -total_generated_latent_frames:, :, :]
 
             if history_pixels is None:
                 history_pixels = vae_decode(real_history_latents, vae).cpu()
@@ -748,10 +768,12 @@ def worker(
                 section_latent_frames = (latent_window_size * 2 + 1) if is_last_section else (latent_window_size * 2)
                 overlapped_frames = latent_window_size * 4 - 3
 
-                current_pixels = vae_decode(real_history_latents[:, :, :section_latent_frames], vae).cpu()
                 if model_type == "Original":
+                    current_pixels = vae_decode(real_history_latents[:, :, :section_latent_frames], vae).cpu()
                     history_pixels = soft_append_bcthw(current_pixels, history_pixels, overlapped_frames)
                 else:  # F1 model
+                    # For F1, we take frames from the end
+                    current_pixels = vae_decode(real_history_latents[:, :, -section_latent_frames:], vae).cpu()
                     history_pixels = soft_append_bcthw(history_pixels, current_pixels, overlapped_frames)
 
             if not high_vram:
@@ -909,7 +931,8 @@ def process(
         'selected_loras': selected_loras,
         'clean_up_videos': clean_up_videos,
         'output_dir': settings.get("output_dir"),
-        'metadata_dir': settings.get("metadata_dir")
+        'metadata_dir': settings.get("metadata_dir"),
+        'resolution': resolution  # Add resolution parameter
     }
     
     # Add LoRA values if provided - extract them from the tuple

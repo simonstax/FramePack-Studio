@@ -19,12 +19,16 @@ bucket_options = {
 
 
 def find_nearest_bucket(h, w, resolution=640):
-    min_metric = float('inf')
+    # Always use the 640 resolution bucket sizes
+    resolution = 640
+    min_diff = float('inf')
     best_bucket = None
+    
+    # Find the bucket size where the first parameter (width) is closest to the slider value
     for (bucket_h, bucket_w) in bucket_options[resolution]:
-        metric = abs(h * bucket_w - w * bucket_h)
-        if metric <= min_metric:
-            min_metric = metric
+        diff = abs(bucket_w - resolution)
+        if diff < min_diff:
+            min_diff = diff
             best_bucket = (bucket_h, bucket_w)
     return best_bucket
 
