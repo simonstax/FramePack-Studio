@@ -457,7 +457,13 @@ def worker(
                 for i, lora_name in enumerate(selected_loras):
                     # Get the corresponding weight if available
                     weight = lora_values[i] if lora_values and i < len(lora_values) else 1.0
-                    lora_data[lora_name] = float(weight)
+                    # Handle case where weight might be a list
+                    if isinstance(weight, list):
+                        # If it's a list, use the first element or default to 1.0
+                        weight_value = weight[0] if weight and len(weight) > 0 else 1.0
+                    else:
+                        weight_value = weight
+                    lora_data[lora_name] = float(weight_value)
                 
                 metadata_dict["loras"] = lora_data
 
