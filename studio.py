@@ -465,13 +465,15 @@ def worker(
             for idx, lora_name in enumerate(selected_loras):
                 lora_file = None
                 for ext in [".safetensors", ".pt"]:
-                    candidate = os.path.join(lora_folder, lora_name + ext)
-                    if os.path.exists(candidate):
-                        lora_file = lora_name + ext
+                    # Find any file that starts with the lora_name and ends with the extension
+                    matching_files = [f for f in os.listdir(lora_folder_from_settings) 
+                                   if f.startswith(lora_name) and f.endswith(ext)]
+                    if matching_files:
+                        lora_file = matching_files[0]  # Use the first matching file
                         break
                 if lora_file:
                     print(f"Loading LoRA {lora_file} to {model_type} model")
-                    current_transformer = lora_utils.load_lora(current_transformer, lora_folder, lora_file)
+                    current_transformer = lora_utils.load_lora(current_transformer, lora_folder_from_settings, lora_file)
                     # Set LoRA strength if provided
                     if lora_values and idx < len(lora_values):
                         lora_strength = float(lora_values[idx])
