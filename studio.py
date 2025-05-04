@@ -218,6 +218,7 @@ def worker(
     input_image, 
     prompt_text, 
     n_prompt, 
+    resolution, 
     seed, 
     total_second_length, 
     latent_window_size,
@@ -233,7 +234,7 @@ def worker(
     latent_type,
     selected_loras,
     clean_up_videos, 
-    lora_values=None, 
+    lora_values=None,
     job_stream=None,
 ):
     global transformer
@@ -301,7 +302,7 @@ def worker(
         stream_to_use.output_queue.push(('progress', (None, '', make_progress_bar_html(0, 'Image processing ...'))))
 
         H, W, C = input_image.shape
-        height, width = find_nearest_bucket(H, W, resolution=640)
+        height, width = find_nearest_bucket(H, W, resolution=resolution)
         input_image_np = resize_and_center_crop(input_image, target_width=width, target_height=height)
 
         if save_metadata:
@@ -667,6 +668,7 @@ def process(
         input_image, 
         prompt_text, 
         n_prompt, 
+        resolution,
         seed, 
         total_second_length, 
         latent_window_size, 
@@ -718,6 +720,7 @@ def process(
         'input_image': input_image.copy(),  # Make a copy to avoid reference issues
         'prompt_text': prompt_text,
         'n_prompt': n_prompt,
+        'resolution': resolution,
         'seed': seed,
         'total_second_length': total_second_length,
         'latent_window_size': latent_window_size,

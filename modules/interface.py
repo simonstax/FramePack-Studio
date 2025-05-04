@@ -65,7 +65,10 @@ def create_interface(
                             height=420,
                             elem_classes="contain-image"
                         )
-                        resolution = gr.Slider(label="Output Resolution (Width)", minimum=128, maximum=768, value=256, step=32, info="Nearest bucket (~WxH) will be used. Height adjusted automatically.")
+                        resolution = gr.Slider(
+                            label="Output Resolution (Width)", minimum=128, maximum=768, value=256, 
+                            step=32, info="Nearest bucket (~WxH) will be used. Height adjusted automatically."
+                        )
                 
                         with gr.Accordion("Latent Image Options", open=False):
 
@@ -229,6 +232,7 @@ def create_interface(
             input_image, 
             prompt, 
             n_prompt, 
+            resolution,
             seed, 
             total_second_length, 
             latent_window_size,
@@ -252,11 +256,11 @@ def create_interface(
         # Modified process function that updates the queue status after adding a job
         def process_with_queue_update(*args):
             # Extract all arguments
-            input_image, prompt_text, n_prompt, seed_value, total_second_length, latent_window_size, steps, cfg, gs, rs, gpu_memory_preservation, use_teacache, mp4_crf, randomize_seed_checked, save_metadata_checked, blend_sections, latent_type, *lora_args = args
+            input_image, prompt_text, n_prompt, resolution, seed_value, total_second_length, latent_window_size, steps, cfg, gs, rs, gpu_memory_preservation, use_teacache, mp4_crf, randomize_seed_checked, save_metadata_checked, blend_sections, latent_type, *lora_args = args
             
             # Use the current seed value as is for this job
             # Call the process function with all arguments
-            result = process_fn(input_image, prompt_text, n_prompt, seed_value, total_second_length, 
+            result = process_fn(input_image, prompt_text, n_prompt, resolution, seed_value, total_second_length, 
                             latent_window_size, steps, cfg, gs, rs, gpu_memory_preservation, 
                             use_teacache, mp4_crf, save_metadata_checked, blend_sections, latent_type, *lora_args)
             
