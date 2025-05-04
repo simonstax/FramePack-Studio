@@ -94,21 +94,15 @@ image_encoder.requires_grad_(False)
 lora_dir = os.path.join(os.path.dirname(__file__), 'loras')
 os.makedirs(lora_dir, exist_ok=True)
 
-# Initialize LoRA support
+# Initialize LoRA support - moved scanning after settings load
 lora_names = []
-lora_values = []
+lora_values = [] # This seems unused for population, might be related to weights later
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
 
-# Define LoRA folder path relative to the script directory
-lora_folder = os.path.join(script_dir, "loras")
-
-lora_names = []
-if os.path.isdir(lora_folder):
-    lora_files = [f for f in os.listdir(lora_folder) 
-                 if f.endswith('.safetensors') or f.endswith('.pt')]
-    for lora_file in lora_files:
-        lora_names.append(lora_file.split('.')[0])
+# Define default LoRA folder path relative to the script directory (used if setting is missing)
+default_lora_folder = os.path.join(script_dir, "loras")
+os.makedirs(default_lora_folder, exist_ok=True) # Ensure default exists
 
 if not high_vram:
     # DynamicSwapInstaller is same as huggingface's enable_sequential_offload but 3x faster
@@ -126,6 +120,23 @@ os.makedirs(outputs_folder, exist_ok=True)
 
 # Initialize settings
 settings = Settings()
+
+# --- Populate LoRA names AFTER settings are loaded ---
+lora_folder_from_settings = settings.get("lora_dir", default_lora_folder) # Use setting, fallback to default
+print(f"Scanning for LoRAs in: {lora_folder_from_settings}")
+if os.path.isdir(lora_folder_from_settings):
+    try:
+        lora_files = [f for f in os.listdir(lora_folder_from_settings)
+                     if f.endswith('.safetensors') or f.endswith('.pt')]
+        for lora_file in lora_files:
+            lora_names.append(lora_file.split('.')[0]) # Get name without extension
+        print(f"Found LoRAs: {lora_names}")
+    except Exception as e:
+        print(f"Error scanning LoRA directory '{lora_folder_from_settings}': {e}")
+else:
+    print(f"LoRA directory not found: {lora_folder_from_settings}")
+# --- End LoRA population ---
+
 
 # Create job queue
 job_queue = VideoJobQueue()
@@ -251,7 +262,8 @@ def worker(
     total_latent_sections = int(max(round(total_latent_sections), 1))
 
     # Parse the timestamped prompt with boundary snapping and reversing
-    prompt_sections = parse_timestamped_prompt(prompt_text, total_second_length, latent_window_size)
+    # prompt_text should now be the original string from the job queue
+    prompt_sections = parse_timestamped_prompt(prompt_text, total_second_length, latent_window_size, model_type)
     job_id = generate_timestamp()
 
     stream_to_use.output_queue.push(('progress', (None, '', make_progress_bar_html(0, 'Starting ...'))))
@@ -362,12 +374,13 @@ def worker(
 
         if save_metadata:
             metadata = PngInfo()
+            # prompt_text should be a string here now
             metadata.add_text("prompt", prompt_text)
             metadata.add_text("seed", str(seed))
             Image.fromarray(input_image_np).save(os.path.join(metadata_dir, f'{job_id}.png'), pnginfo=metadata)
 
             metadata_dict = {
-                "prompt": prompt_text,
+                "prompt": prompt_text, # Use the original string
                 "seed": seed,
                 "total_second_length": total_second_length,
                 "steps": steps,
@@ -546,31 +559,34 @@ def worker(
             blend_alpha = None
             prev_prompt = current_prompt
             next_prompt = current_prompt
-            for i, (change_idx, prompt) in enumerate(prompt_change_indices):
-                if section_idx < change_idx:
-                    prev_prompt = prompt_change_indices[i - 1][1] if i > 0 else prompt
-                    next_prompt = prompt
-                    blend_start = change_idx
-                    blend_end = change_idx + blend_sections
-                    if section_idx >= change_idx and section_idx < blend_end:
-                        blend_alpha = (section_idx - change_idx + 1) / blend_sections
-                    break
-                elif section_idx == change_idx:
-                    # At the exact change, start blending
-                    if i > 0:
-                        prev_prompt = prompt_change_indices[i - 1][1]
+
+            # Only try to blend if we have prompt change indices and multiple sections
+            if prompt_change_indices and len(prompt_sections) > 1:
+                for i, (change_idx, prompt) in enumerate(prompt_change_indices):
+                    if section_idx < change_idx:
+                        prev_prompt = prompt_change_indices[i - 1][1] if i > 0 else prompt
                         next_prompt = prompt
-                        blend_alpha = 1.0 / blend_sections
-                    else:
-                        prev_prompt = prompt
-                        next_prompt = prompt
-                        blend_alpha = None
-                    break
-            else:
-                # After last change, no blending
-                prev_prompt = current_prompt
-                next_prompt = current_prompt
-                blend_alpha = None
+                        blend_start = change_idx
+                        blend_end = change_idx + blend_sections
+                        if section_idx >= change_idx and section_idx < blend_end:
+                            blend_alpha = (section_idx - change_idx + 1) / blend_sections
+                        break
+                    elif section_idx == change_idx:
+                        # At the exact change, start blending
+                        if i > 0:
+                            prev_prompt = prompt_change_indices[i - 1][1]
+                            next_prompt = prompt
+                            blend_alpha = 1.0 / blend_sections
+                        else:
+                            prev_prompt = prompt
+                            next_prompt = prompt
+                            blend_alpha = None
+                        break
+                else:
+                    # After last change, no blending
+                    prev_prompt = current_prompt
+                    next_prompt = current_prompt
+                    blend_alpha = None
 
             # Get the encoded prompt for this section
             if blend_alpha is not None and prev_prompt != next_prompt:
@@ -905,26 +921,27 @@ def monitor_job(job_id):
         time.sleep(0.5)
 
 
-# Create interface
-block = create_interface(
-    process_fn=process,
-    monitor_fn=monitor_job,
-    end_process_fn=end_process,
-    update_queue_status_fn=update_queue_status,
-    load_lora_file_fn=load_lora_file,
-    job_queue=job_queue,
-    settings=settings
-)
+# Create interface (Removed redundant 'block =' assignment)
+# interface = create_interface( # This call was redundant
+#     process_fn=process,
+#     monitor_fn=monitor_job,
+#     end_process_fn=end_process,
+#     update_queue_status_fn=update_queue_status,
+#     load_lora_file_fn=load_lora_file,
+#     job_queue=job_queue,
+#     settings=settings
+# )
 
 # Launch the interface
-interface = create_interface(
+interface = create_interface( # Pass populated lora_names here
     process_fn=process,
     monitor_fn=monitor_job,
     end_process_fn=end_process,
     update_queue_status_fn=update_queue_status,
     load_lora_file_fn=load_lora_file,
     job_queue=job_queue,
-    settings=settings
+    settings=settings,
+    lora_names=lora_names # Explicitly pass the found LoRA names
 )
 
 # Launch the interface

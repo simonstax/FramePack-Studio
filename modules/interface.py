@@ -291,7 +291,8 @@ def create_interface(
                             queue_status = gr.DataFrame(
                                 headers=["Job ID", "Type", "Status", "Created", "Started", "Completed", "Elapsed", "Preview"],
                                 datatype=["str", "str", "str", "str", "str", "str", "str", "image"],
-                                label="Job Queue"
+                                label="Job Queue",
+                                height=None # Allow dynamic height
                             )
                         with gr.Row():
                             refresh_button = gr.Button("Refresh Queue")
@@ -395,7 +396,7 @@ def create_interface(
             inputs=[
                 input_image, prompt, n_prompt, seed, total_second_length,
                 latent_window_size, steps, cfg, gs, rs, gpu_memory_preservation,
-                use_teacache, mp4_crf, save_metadata, blend_sections, latent_type,
+                use_teacache, mp4_crf, randomize_seed, save_metadata, blend_sections, latent_type,
                 clean_up_videos, lora_selector
             ],
             outputs=[result_video, current_job_id, preview_image, progress_desc, progress_bar, start_button, end_button, queue_status, seed]
@@ -652,13 +653,13 @@ def create_interface(
             # Extract all arguments
             input_image, prompt_text, n_prompt, seed_value, total_second_length, latent_window_size, steps, cfg, gs, rs, gpu_memory_preservation, use_teacache, mp4_crf, randomize_seed_checked, save_metadata_checked, blend_sections, latent_type, clean_up_videos, selected_loras, *lora_args = args
             
-            # Parse the prompt with the correct generation type
-            prompt_sections = parse_timestamped_prompt(prompt_text, total_second_length, latent_window_size, model_type)
-            
+            # DO NOT parse the prompt here. Parsing happens once in the worker.
+            # prompt_sections = parse_timestamped_prompt(prompt_text, total_second_length, latent_window_size, model_type)
+
             # Use the current seed value as is for this job
             # Call the process function with all arguments
-            # Pass the model_type to the backend process function
-            result = process_fn(model_type, input_image, prompt_sections, n_prompt, seed_value, total_second_length,
+            # Pass the model_type and the ORIGINAL prompt_text string to the backend process function
+            result = process_fn(model_type, input_image, prompt_text, n_prompt, seed_value, total_second_length, # Pass original prompt_text string
                             latent_window_size, steps, cfg, gs, rs, gpu_memory_preservation,
                             use_teacache, mp4_crf, save_metadata_checked, blend_sections, latent_type, clean_up_videos, selected_loras, *lora_args)
             
