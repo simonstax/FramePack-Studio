@@ -33,6 +33,7 @@ from diffusers_helper.lora_utils import load_lora, unload_all_loras
 from modules.video_queue import VideoJobQueue, JobStatus
 from modules.prompt_handler import parse_timestamped_prompt
 from modules.interface import create_interface, format_queue_status
+from modules.settings import Settings
 
 
 parser = argparse.ArgumentParser()
@@ -124,6 +125,9 @@ stream = AsyncStream()
 
 outputs_folder = './outputs/'
 os.makedirs(outputs_folder, exist_ok=True)
+
+# Initialize settings
+settings = Settings()
 
 # Create job queue
 job_queue = VideoJobQueue()
@@ -235,6 +239,8 @@ def worker(
     clean_up_videos, 
     lora_values=None, 
     job_stream=None,
+    output_dir=None,
+    metadata_dir=None
 ):
     global transformer
     
@@ -308,7 +314,7 @@ def worker(
             metadata = PngInfo()
             metadata.add_text("prompt", prompt_text)
             metadata.add_text("seed", str(seed))
-            Image.fromarray(input_image_np).save(os.path.join(outputs_folder, f'{job_id}.png'), pnginfo=metadata)
+            Image.fromarray(input_image_np).save(os.path.join(metadata_dir, f'{job_id}.png'), pnginfo=metadata)
 
             metadata_dict = {
                 "prompt": prompt_text,
@@ -334,10 +340,10 @@ def worker(
                 
                 metadata_dict["loras"] = lora_data
 
-            with open(os.path.join(outputs_folder, f'{job_id}.json'), 'w') as f:
+            with open(os.path.join(metadata_dir, f'{job_id}.json'), 'w') as f:
                 json.dump(metadata_dict, f, indent=2)
         else:
-            Image.fromarray(input_image_np).save(os.path.join(outputs_folder, f'{job_id}.png'))
+            Image.fromarray(input_image_np).save(os.path.join(metadata_dir, f'{job_id}.png'))
 
         input_image_pt = torch.from_numpy(input_image_np).float() / 127.5 - 1
         input_image_pt = input_image_pt.permute(2, 0, 1)[None, :, None]
@@ -608,7 +614,7 @@ def worker(
             if not high_vram:
                 unload_complete_models()
 
-            output_filename = os.path.join(outputs_folder, f'{job_id}_{total_generated_latent_frames}.mp4')
+            output_filename = os.path.join(output_dir, f'{job_id}_{total_generated_latent_frames}.mp4')
             save_bcthw_as_mp4(history_pixels, output_filename, fps=30, crf=mp4_crf)
             print(f'Decoded. Current latent shape {real_history_latents.shape}; pixel shape {history_pixels.shape}')
             stream_to_use.output_queue.push(('file', output_filename))
@@ -628,7 +634,7 @@ def worker(
     if clean_up_videos:
         try:
             video_files = [
-                f for f in os.listdir(outputs_folder)
+                f for f in os.listdir(output_dir)
                 if f.startswith(f"{job_id}_") and f.endswith(".mp4")
             ]
             print(f"Video files found for cleanup: {video_files}")
@@ -643,7 +649,7 @@ def worker(
                 print(f"Sorted video files: {video_files_sorted}")
                 final_video = video_files_sorted[-1]
                 for vf in video_files_sorted[:-1]:
-                    full_path = os.path.join(outputs_folder, vf)
+                    full_path = os.path.join(output_dir, vf)
                     try:
                         os.remove(full_path)
                         print(f"Deleted intermediate video: {full_path}")
@@ -732,7 +738,9 @@ def process(
         'mp4_crf': mp4_crf,
         'save_metadata': save_metadata,
         'selected_loras': selected_loras,
-        'clean_up_videos': clean_up_videos
+        'clean_up_videos': clean_up_videos,
+        'output_dir': settings.get("output_dir"),
+        'metadata_dir': settings.get("metadata_dir")
     }
     
     # Add LoRA values if provided - extract them from the tuple
@@ -839,7 +847,18 @@ def monitor_job(job_id):
         time.sleep(0.5)
 
 
-# Create the interface using the updated version that supports auto-monitoring
+# Create interface
+block = create_interface(
+    process_fn=process,
+    monitor_fn=monitor_job,
+    end_process_fn=end_process,
+    update_queue_status_fn=update_queue_status,
+    load_lora_file_fn=load_lora_file,
+    job_queue=job_queue,
+    settings=settings
+)
+
+# Launch the interface
 interface = create_interface(
     process_fn=process,
     monitor_fn=monitor_job,
@@ -847,7 +866,7 @@ interface = create_interface(
     update_queue_status_fn=update_queue_status,
     load_lora_file_fn=load_lora_file,
     job_queue=job_queue,
-    lora_names=lora_names
+    settings=settings
 )
 
 # Launch the interface

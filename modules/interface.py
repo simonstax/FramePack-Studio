@@ -5,7 +5,7 @@ import random
 import os
 from typing import List, Dict, Any, Optional
 
-from modules.video_queue import JobStatus
+from modules.video_queue import JobStatus, Job
 from modules.prompt_handler import get_section_boundaries, get_quick_prompts
 from diffusers_helper.gradio.progress_bar import make_progress_bar_css, make_progress_bar_html
 
@@ -91,12 +91,12 @@ def create_interface(
         with gr.Row(elem_id="fixed-toolbar"):
             gr.Markdown("<h1 style='margin:0;color:white;'>FramePack Studio</h1>")
             queue_stats_display = gr.Markdown("<p style='margin:0;color:white;'>Queue: 0 | Completed: 0</p>")
-            refresh_stats_btn = gr.Button("Refresh", elem_id="refresh-stats-btn")  # Add a refresh icon/button
+            refresh_stats_btn = gr.Button("Refresh", elem_id="refresh-stats-btn")
             start_button = gr.Button(value="Add to Queue", elem_id="toolbar-add-to-queue-btn")
         
         
         with gr.Tabs():
-            with gr.TabItem("Generate"):
+            with gr.Tab("Generate"):
                 with gr.Row():
                     with gr.Column():
                         input_image = gr.Image(
@@ -108,15 +108,12 @@ def create_interface(
                         )
 
                         with gr.Accordion("Latent Image Options", open=False):
-
                             latent_type = gr.Dropdown(
                                 ["Black", "White", "Noise", "Green Screen"], label="Latent Image", value="Black", info="Used as a starting point if no image is provided"
                             )
                         
                         prompt = gr.Textbox(label="Prompt", value=default_prompt)
 
-                        #example_quick_prompts = gr.Dataset(samples=quick_prompts, label='Quick List', samples_per_page=1000, components=[prompt])
-                        #example_quick_prompts.click(lambda x: x[0], inputs=[example_quick_prompts], outputs=prompt, show_progress=False, queue=False)
                         with gr.Accordion("Prompt Parameters", open=False):
                             blend_sections = gr.Slider(
                                 minimum=0, maximum=10, value=4, step=1,
@@ -142,8 +139,6 @@ def create_interface(
                                         label=f"{lora} Weight", visible=False, interactive=True
                                     )
 
-                                # for lora in lora_names:
-                                    # lora_values.append(gr.Slider(label=lora, minimum=0.0, maximum=2.0, value=0.0, step=0.01,))  
                             with gr.Row("Metadata"):
                                 json_upload = gr.File(
                                     label="Upload Metadata JSON (optional)",
@@ -160,8 +155,7 @@ def create_interface(
                             with gr.Row():
                                 seed = gr.Number(label="Seed", value=31337, precision=0)
                                 randomize_seed = gr.Checkbox(label="Randomize", value=False, info="Generate a new random seed for each job")
-                              
-
+                            
 
                         with gr.Accordion("Advanced Parameters", open=False):    
                             latent_window_size = gr.Slider(label="Latent Window Size", minimum=1, maximum=33, value=9, step=1, visible=True, info='Change at your own risk, very experimental')  # Should not change
@@ -177,27 +171,32 @@ def create_interface(
                                 info="If checked, only the final video will be kept after generation."
                             )
                             
-                        #with gr.Row():
-                            #start_button = gr.Button(value="Add to Queue")
-                            # Removed the monitor button since we'll auto-monitor
-                            
                     with gr.Column():
                         preview_image = gr.Image(label="Next Latents", height=150, visible=True, type="numpy")
                         result_video = gr.Video(label="Finished Frames", autoplay=True, show_share_button=False, height=256, loop=True)
-                        #gr.Markdown('Note that the ending actions will be generated before the starting actions due to the inverted sampling. If the starting action is not in the video, you just need to wait, and it will be generated later.')
                         progress_desc = gr.Markdown('', elem_classes='no-generating-animation')
                         progress_bar = gr.HTML('', elem_classes='no-generating-animation')
 
                         with gr.Row():  
                             current_job_id = gr.Textbox(label="Current Job ID", visible=True, interactive=True) 
                             end_button = gr.Button(value="Cancel Current Job", interactive=True) 
-                        with gr.Row():     
-                            queue_status = gr.DataFrame(
-                                headers=["Job ID", "Status", "Created", "Started", "Completed", "Elapsed"],
-                                datatype=["str", "str", "str", "str", "str", "str"],
-                                label="Job Queue"
-                            )
-            with gr.TabItem("Settings"):
+
+            with gr.Tab("Queue"):
+                with gr.Row():
+                    with gr.Column():
+                        queue_status = gr.DataFrame(
+                            headers=["Job ID", "Status", "Created", "Started", "Completed", "Elapsed"],
+                            datatype=["str", "str", "str", "str", "str", "str"],
+                            label="Job Queue"
+                        )
+                        refresh_button = gr.Button("Refresh Queue")
+                        refresh_button.click(
+                            fn=update_queue_status_fn,
+                            inputs=[],
+                            outputs=[queue_status]
+                        )
+
+            with gr.Tab("Settings"):
                 with gr.Row():
                     with gr.Column():
                         output_dir = gr.Textbox(
@@ -221,25 +220,102 @@ def create_interface(
                         )
                         save_btn = gr.Button("Save Settings")
                         status = gr.HTML("")
-                
-                def save_settings(output_dir, metadata_dir, lora_dir, auto_save):
-                    try:
-                        settings.update({
-                            "output_dir": output_dir,
-                            "metadata_dir": metadata_dir,
-                            "lora_dir": lora_dir,
-                            "auto_save_settings": auto_save
-                        })
-                        return "<p style='color:green;'>Settings saved successfully!</p>"
-                    except Exception as e:
-                        return f"<p style='color:red;'>Error saving settings: {str(e)}</p>"
-                
-                save_btn.click(
-                    fn=save_settings,
-                    inputs=[output_dir, metadata_dir, lora_dir, auto_save],
-                    outputs=[status]
-                )                
+
+                        def save_settings(output_dir, metadata_dir, lora_dir, auto_save):
+                            try:
+                                settings.update({
+                                    "output_dir": output_dir,
+                                    "metadata_dir": metadata_dir,
+                                    "lora_dir": lora_dir,
+                                    "auto_save_settings": auto_save
+                                })
+                                return "<p style='color:green;'>Settings saved successfully!</p>"
+                            except Exception as e:
+                                return f"<p style='color:red;'>Error saving settings: {str(e)}</p>"
+
+                        save_btn.click(
+                            fn=save_settings,
+                            inputs=[output_dir, metadata_dir, lora_dir, auto_save],
+                            outputs=[status]
+                        )
+
+        # Connect the main process function
+        def process_with_queue_update(*args):
+            # Extract all arguments
+            input_image, prompt_text, n_prompt, seed_value, total_second_length, latent_window_size, steps, cfg, gs, rs, gpu_memory_preservation, use_teacache, mp4_crf, save_metadata_checked, blend_sections, latent_type, *lora_args = args
+            
+            # Call the process function with all arguments
+            result = process_fn(input_image, prompt_text, n_prompt, seed_value, total_second_length, 
+                latent_window_size, steps, cfg, gs, rs, gpu_memory_preservation,
+                use_teacache, mp4_crf, save_metadata_checked, blend_sections, latent_type, *lora_args)
+            
+            # If a job ID was created, automatically start monitoring it and update queue
+            if result and result[1]:  # Check if job_id exists in results
+                job_id = result[1]
+                queue_status_data = update_queue_status_fn()
+                return [result[0], job_id, result[2], result[3], result[4], result[5], result[6], queue_status_data]
+            
+            return result + [update_queue_status_fn()]
+
+        # Connect the buttons to their respective functions
+        start_button.click(
+            fn=process_with_queue_update,
+            inputs=[
+                input_image, prompt, n_prompt, seed, total_second_length,
+                latent_window_size, steps, cfg, gs, rs, gpu_memory_preservation,
+                use_teacache, mp4_crf, save_metadata, blend_sections, latent_type,
+                clean_up_videos, lora_selector, *[lora_sliders[lora] for lora in lora_names]
+            ],
+            outputs=[result_video, current_job_id, preview_image, progress_desc, progress_bar, start_button, end_button, queue_status]
+        )
+
+        end_button.click(
+            fn=end_process_fn,
+            inputs=[],
+            outputs=[queue_status]
+        )
+
+        current_job_id.change(
+            fn=monitor_fn,
+            inputs=[current_job_id],
+            outputs=[result_video, current_job_id, preview_image, progress_desc, progress_bar, start_button, end_button]
+        )
         
+        refresh_stats_btn.click(
+            fn=lambda: (get_queue_stats(), update_queue_status_fn()),
+            inputs=None,
+            outputs=[queue_stats_display, queue_status]
+        )
+
+        # Function to get queue statistics
+        def get_queue_stats():
+            try:
+                # Get all jobs from the queue
+                jobs = job_queue.get_all_jobs()
+                
+                # Count jobs by status
+                status_counts = {
+                    JobStatus.QUEUED: 0,
+                    JobStatus.RUNNING: 0,
+                    JobStatus.COMPLETED: 0,
+                    JobStatus.FAILED: 0,
+                    JobStatus.CANCELLED: 0
+                }
+                
+                for job in jobs:
+                    if hasattr(job, 'status'):
+                        status_counts[job.status] = status_counts.get(job.status, 0) + 1
+                
+                # Format the display text
+                stats_text = f"Queue: {status_counts[JobStatus.QUEUED]} | Running: {status_counts[JobStatus.RUNNING]} | Completed: {status_counts[JobStatus.COMPLETED]} | Failed: {status_counts[JobStatus.FAILED]} | Cancelled: {status_counts[JobStatus.CANCELLED]}"
+                
+                return f"<p style='margin:0;color:white;'>{stats_text}</p>"
+                
+            except Exception as e:
+                print(f"Error getting queue stats: {e}")
+                return "<p style='margin:0;color:white;'>Error loading queue stats</p>"
+
+        # Function to update slider visibility based on selection
         def update_lora_sliders(selected_loras):
             updates = []
             for lora in lora_names:
@@ -251,91 +327,12 @@ def create_interface(
             fn=update_lora_sliders,
             inputs=[lora_selector],
             outputs=[lora_sliders[lora] for lora in lora_names]
-        )        
-                        
-        # Add a refresh timer that updates the queue status every 2 seconds
-        refresh_timer = gr.Number(value=0, visible=False)
-        
-        def refresh_timer_fn():
-            """Updates the timer value periodically to trigger queue refresh"""
-            return int(time.time())
+        )
 
-        def get_queue_stats():
-            jobs = job_queue.get_all_jobs()
-            in_queue = sum(1 for job in jobs if job.status in [JobStatus.PENDING, JobStatus.RUNNING])
-            completed = sum(1 for job in jobs if job.status == JobStatus.COMPLETED)
-            return f"<p style='margin:0;color:white;'>Queue: {in_queue} | Completed: {completed}</p>"
-            
-
-        # Connect the main process function
-        ips = [
-            input_image, 
-            prompt, 
-            n_prompt, 
-            seed, 
-            total_second_length, 
-            latent_window_size,
-            steps, 
-            cfg, 
-            gs, 
-            rs, 
-            gpu_memory_preservation, 
-            use_teacache, 
-            mp4_crf,
-            randomize_seed, 
-            save_metadata, 
-            blend_sections, 
-            latent_type, 
-            clean_up_videos,
-            lora_selector
-        ]
-        # Add LoRA sliders to the input list
-        ips.extend([lora_sliders[lora] for lora in lora_names])
-                
-        # Modified process function that updates the queue status after adding a job
-        def process_with_queue_update(*args):
-            # Extract all arguments
-            input_image, prompt_text, n_prompt, seed_value, total_second_length, latent_window_size, steps, cfg, gs, rs, gpu_memory_preservation, use_teacache, mp4_crf, randomize_seed_checked, save_metadata_checked, blend_sections, latent_type, *lora_args = args
-            
-            # Use the current seed value as is for this job
-            # Call the process function with all arguments
-            result = process_fn(input_image, prompt_text, n_prompt, seed_value, total_second_length, 
-                            latent_window_size, steps, cfg, gs, rs, gpu_memory_preservation, 
-                            use_teacache, mp4_crf, save_metadata_checked, blend_sections, latent_type, *lora_args)
-            
-            # If randomize_seed is checked, generate a new random seed for the next job
-            new_seed_value = None
-            if randomize_seed_checked:
-                new_seed_value = random.randint(0, 21474)
-                print(f"Generated new seed for next job: {new_seed_value}")
-            
-            # If a job ID was created, automatically start monitoring it and update queue
-            if result and result[1]:  # Check if job_id exists in results
-                job_id = result[1]
-                queue_status_data = update_queue_status_fn()
-                
-                # Add the new seed value to the results if randomize is checked
-                if new_seed_value is not None:
-                    return [result[0], job_id, result[2], result[3], result[4], result[5], result[6], queue_status_data, new_seed_value]
-                else:
-                    return [result[0], job_id, result[2], result[3], result[4], result[5], result[6], queue_status_data, gr.update()]
-            
-            # If no job ID was created, still return the new seed if randomize is checked
-            if new_seed_value is not None:
-                return result + [update_queue_status_fn(), new_seed_value]
-            else:
-                return result + [update_queue_status_fn(), gr.update()]
-            
-        # Custom end process function that ensures the queue is updated
-        def end_process_with_update():
-            queue_status_data = end_process_fn()
-            # Make sure to return the queue status data
-            return queue_status_data
-
-        # Load that metadata!
+        # Function to load metadata from JSON file
         def load_metadata_from_json(json_path):
             if not json_path:
-                return [gr.update(), gr.update()]
+                return [gr.update(), gr.update()] + [gr.update() for _ in lora_names]
             
             try:
                 import json
@@ -359,89 +356,25 @@ def create_interface(
                 ]
                 
                 # Update LoRA sliders if they exist in metadata
-                if lora_values:
-                    for lora_name, lora_value in lora_values.items():
-                        # Find the corresponding slider
-                        for i, lora in enumerate(lora_names):
-                            if lora == lora_name:
-                                updates.append(gr.update(value=lora_value))
+                for lora in lora_names:
+                    if lora in lora_values:
+                        updates.append(gr.update(value=lora_values[lora]))
+                    else:
+                        updates.append(gr.update())
                 
                 return updates
                 
             except Exception as e:
                 print(f"Error loading metadata: {e}")
-                return [gr.update(), gr.update()]
-        
-        # Function to handle LoRA file upload
-        def handle_lora_upload(file):
-            if not file:
-                return gr.update(), "No file uploaded"
-            
-            try:
-                # Get the filename from the path
-                _, lora_name = os.path.split(file.name)
-                
-                # Copy the file to the lora directory
-                lora_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'loras')
-                os.makedirs(lora_dir, exist_ok=True)
-                
-                lora_dest = os.path.join(lora_dir, lora_name)
-                import shutil
-                shutil.copy(file.name, lora_dest)
-                
-                return gr.update(), f"Successfully uploaded {lora_name}"
-            except Exception as e:
-                return gr.update(), f"Error uploading LoRA: {e}"
-            
-        # Connect the buttons to their respective functions
-        start_button.click(
-            fn=process_with_queue_update, 
-            inputs=ips, 
-            outputs=[result_video, current_job_id, preview_image, progress_desc, progress_bar, start_button, end_button, queue_status, seed]
-        )
-        
-        # Connect the end button to cancel the current job and update the queue
-        end_button.click(
-            fn=end_process_with_update,
-            outputs=[queue_status]
-        )
-        
-        # Auto-monitor the current job when job_id changes
-        current_job_id.change(
-            fn=monitor_fn,
-            inputs=[current_job_id],
-            outputs=[result_video, current_job_id, preview_image, progress_desc, progress_bar, start_button, end_button]
-        )
-        
-        refresh_stats_btn.click(
-            fn=lambda: (get_queue_stats(), update_queue_status_fn()),
-            inputs=None,
-            outputs=[queue_stats_display, queue_status]
-        )
+                return [gr.update(), gr.update()] + [gr.update() for _ in lora_names]
 
         # Connect JSON metadata loader
         json_upload.change(
             fn=load_metadata_from_json,
             inputs=[json_upload],
-            outputs=[prompt, seed] + lora_values
+            outputs=[prompt, seed] + [lora_sliders[lora] for lora in lora_names]
         )
 
-        # Function to update slider visibility based on selection
-        def update_lora_sliders(selected_loras):
-            updates = []
-            for lora in lora_names:
-                updates.append(gr.update(visible=(lora in selected_loras)))
-            return updates
-
-        # Connect the dropdown to the sliders
-        lora_selector.change(
-            fn=update_lora_sliders,
-            inputs=[lora_selector],
-            outputs=[lora_sliders[lora] for lora in lora_names]
-        )
-
-        
-    
     return block
 
 
