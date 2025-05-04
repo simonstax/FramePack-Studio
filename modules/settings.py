@@ -5,12 +5,17 @@ import os
 
 class Settings:
     def __init__(self):
-        self.settings_file = Path.home() / ".framepack" / "settings.json"
+        # Get the project root directory (where settings.py is located)
+        project_root = Path(__file__).parent.parent
+        
+        self.settings_file = project_root / ".framepack" / "settings.json"
         self.settings_file.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Set default paths relative to project root
         self.default_settings = {
-            "output_dir": str(Path.home() / "Videos" / "FramePack"),
-            "metadata_dir": str(Path.home() / "Videos" / "FramePack" / "metadata"),
-            "lora_dir": str(Path.home() / "FramePack" / "loras"),
+            "output_dir": str(project_root / "outputs"),
+            "metadata_dir": str(project_root / "outputs"),
+            "lora_dir": str(project_root / "loras"),
             "auto_save_settings": True,
             "gradio_theme": "default"
         }
