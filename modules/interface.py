@@ -125,10 +125,6 @@ def create_interface(
                             height=420,
                             elem_classes="contain-image"
                         )
-                        resolution = gr.Slider(
-                            label="Output Resolution (Width)", minimum=128, maximum=768, value=512, 
-                            step=32, info="Nearest bucket (~WxH) will be used. Height adjusted automatically."
-                        )
                 
                         with gr.Accordion("Latent Image Options", open=False):
                             latent_type = gr.Dropdown(
@@ -146,6 +142,11 @@ def create_interface(
                             with gr.Row():
                                 steps = gr.Slider(label="Steps", minimum=1, maximum=100, value=25, step=1)
                                 total_second_length = gr.Slider(label="Video Length (Seconds)", minimum=1, maximum=120, value=5, step=0.1)
+                            with gr.Row():
+                                resolution = gr.Slider(
+                                    label="Output Resolution (Width)", minimum=128, maximum=768, value=512, 
+                                    step=32, info="Nearest bucket (~WxH) will be used. Height adjusted automatically."
+                                )
                             with gr.Row("LoRAs"):
                                 lora_selector = gr.Dropdown(
                                     choices=lora_names,
@@ -215,10 +216,6 @@ def create_interface(
                             height=420,
                             elem_classes="contain-image"
                         )
-                        f1_resolution = gr.Slider(
-                            label="Output Resolution (Width)", minimum=128, maximum=768, value=512, 
-                            step=32, info="Nearest bucket (~WxH) will be used. Height adjusted automatically."
-                        )
 
                         with gr.Accordion("Latent Image Options", open=False):
                             f1_latent_type = gr.Dropdown(
@@ -236,6 +233,11 @@ def create_interface(
                             with gr.Row():
                                 f1_steps = gr.Slider(label="Steps", minimum=1, maximum=100, value=25, step=1)
                                 f1_total_second_length = gr.Slider(label="Video Length (Seconds)", minimum=1, maximum=120, value=5, step=0.1)
+                            with gr.Row():
+                                f1_resolution = gr.Slider(
+                                    label="Output Resolution (Width)", minimum=128, maximum=768, value=512, 
+                                    step=32, info="Nearest bucket (~WxH) will be used. Height adjusted automatically."
+                                )
                             with gr.Row("LoRAs"):
                                 f1_lora_selector = gr.Dropdown(
                                     choices=lora_names,
@@ -374,22 +376,23 @@ def create_interface(
                         status = gr.HTML("")
                         cleanup_output = gr.Textbox(label="Cleanup Status", interactive=False)
 
-                        def save_settings(output_dir, metadata_dir, lora_dir, auto_save, selected_theme): # Added selected_theme
+                        def save_settings(output_dir, metadata_dir, lora_dir, gradio_temp_dir, auto_save, selected_theme):
                             try:
-                                settings.update({
-                                    "output_dir": output_dir,
-                                    "metadata_dir": metadata_dir,
-                                    "lora_dir": lora_dir,
-                                    "auto_save_settings": auto_save,
-                                    "gradio_theme": selected_theme # Added theme
-                                })
-                                return "<p style='color:green;'>Settings saved successfully! Restart required for theme change.</p>" # Updated message
+                                settings.save_settings(
+                                    output_dir=output_dir,
+                                    metadata_dir=metadata_dir,
+                                    lora_dir=lora_dir,
+                                    gradio_temp_dir=gradio_temp_dir,
+                                    auto_save_settings=auto_save,
+                                    gradio_theme=selected_theme
+                                )
+                                return "<p style='color:green;'>Settings saved successfully! Restart required for theme change.</p>"
                             except Exception as e:
                                 return f"<p style='color:red;'>Error saving settings: {str(e)}</p>"
 
                         save_btn.click(
                             fn=save_settings,
-                            inputs=[output_dir, metadata_dir, lora_dir, auto_save, theme_dropdown], # Added theme_dropdown
+                            inputs=[output_dir, metadata_dir, lora_dir, gradio_temp_dir, auto_save, theme_dropdown],
                             outputs=[status]
                         )
 

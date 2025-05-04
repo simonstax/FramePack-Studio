@@ -1004,19 +1004,11 @@ def monitor_job(job_id):
         time.sleep(0.5)
 
 
-# Create interface (Removed redundant 'block =' assignment)
-# interface = create_interface( # This call was redundant
-#     process_fn=process,
-#     monitor_fn=monitor_job,
-#     end_process_fn=end_process,
-#     update_queue_status_fn=update_queue_status,
-#     load_lora_file_fn=load_lora_file,
-#     job_queue=job_queue,
-#     settings=settings
-# )
+# Set Gradio temporary directory from settings
+os.environ["GRADIO_TEMP_DIR"] = settings.get("gradio_temp_dir")
 
-# Launch the interface
-interface = create_interface( # Pass populated lora_names here
+# Create the interface
+interface = create_interface(
     process_fn=process,
     monitor_fn=monitor_job,
     end_process_fn=end_process,
@@ -1026,9 +1018,6 @@ interface = create_interface( # Pass populated lora_names here
     settings=settings,
     lora_names=lora_names # Explicitly pass the found LoRA names
 )
-
-# Set Gradio temp directory
-os.environ["GRADIO_TEMP_DIR"] = settings.get("gradio_temp_dir")
 
 # Launch the interface
 interface.launch(
