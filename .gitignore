@@ -2,6 +2,8 @@ hf_download/
 outputs/
 repo/
 loras/
+queue.json
+settings.json
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
