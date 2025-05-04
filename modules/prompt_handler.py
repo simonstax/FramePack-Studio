@@ -48,7 +48,7 @@ def snap_to_section_boundaries(prompt_sections: List[PromptSection], latent_wind
     return aligned_sections
 
 
-def parse_timestamped_prompt(prompt_text: str, total_duration: float, latent_window_size: int = 9) -> List[PromptSection]:
+def parse_timestamped_prompt(prompt_text: str, total_duration: float, latent_window_size: int = 9, generation_type: str = "Original") -> List[PromptSection]:
     """
     Parse a prompt with timestamps in the format [0s-2s: text] or [3s: text]
     
@@ -56,10 +56,11 @@ def parse_timestamped_prompt(prompt_text: str, total_duration: float, latent_win
         prompt_text: The input prompt text with optional timestamp sections
         total_duration: Total duration of the video in seconds
         latent_window_size: Size of the latent window used in the model
+        generation_type: Type of generation ("Original" or "F1")
         
     Returns:
         List of PromptSection objects with timestamps aligned to section boundaries
-        and reversed to account for reverse generation
+        and reversed to account for reverse generation (only for Original type)
     """
     # Default prompt for the entire duration if no timestamps are found
     if "[" not in prompt_text or "]" not in prompt_text:
@@ -112,21 +113,24 @@ def parse_timestamped_prompt(prompt_text: str, total_duration: float, latent_win
     # Snap timestamps to section boundaries
     sections = snap_to_section_boundaries(sections, latent_window_size)
     
-    # Now reverse the timestamps to account for reverse generation
-    reversed_sections = []
-    for section in sections:
-        reversed_start = total_duration - section.end_time if section.end_time is not None else 0
-        reversed_end = total_duration - section.start_time
-        reversed_sections.append(PromptSection(
-            prompt=section.prompt,
-            start_time=reversed_start,
-            end_time=reversed_end
-        ))
+    # Only reverse timestamps for Original generation type
+    if generation_type == "Original":
+        # Now reverse the timestamps to account for reverse generation
+        reversed_sections = []
+        for section in sections:
+            reversed_start = total_duration - section.end_time if section.end_time is not None else 0
+            reversed_end = total_duration - section.start_time
+            reversed_sections.append(PromptSection(
+                prompt=section.prompt,
+                start_time=reversed_start,
+                end_time=reversed_end
+            ))
+        
+        # Sort the reversed sections by start time
+        reversed_sections.sort(key=lambda x: x.start_time)
+        return reversed_sections
     
-    # Sort the reversed sections by start time
-    reversed_sections.sort(key=lambda x: x.start_time)
-    
-    return reversed_sections
+    return sections
 
 
 def get_section_boundaries(latent_window_size: int = 9, count: int = 10) -> str:

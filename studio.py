@@ -62,23 +62,24 @@ vae = AutoencoderKLHunyuanVideo.from_pretrained("hunyuanvideo-community/HunyuanV
 feature_extractor = SiglipImageProcessor.from_pretrained("lllyasviel/flux_redux_bfl", subfolder='feature_extractor')
 image_encoder = SiglipVisionModel.from_pretrained("lllyasviel/flux_redux_bfl", subfolder='image_encoder', torch_dtype=torch.float16).cpu()
 
-transformer = HunyuanVideoTransformer3DModelPacked.from_pretrained('lllyasviel/FramePackI2V_HY', torch_dtype=torch.bfloat16).cpu()
+# Initialize transformer placeholders
+transformer_original = None
+transformer_f1 = None
+current_transformer = None # Will hold the currently active model
 
+# Load models based on VRAM availability later
+ 
 # Configure models
 vae.eval()
 text_encoder.eval()
 text_encoder_2.eval()
 image_encoder.eval()
-transformer.eval()
 
 if not high_vram:
-    vae.enable_slicing()
-    vae.enable_tiling()
+   vae.enable_slicing()
+   vae.enable_tiling()
 
-transformer.high_quality_fp32_output_for_inference = True
-print('transformer.high_quality_fp32_output_for_inference = True')
 
-transformer.to(dtype=torch.bfloat16)
 vae.to(dtype=torch.float16)
 image_encoder.to(dtype=torch.float16)
 text_encoder.to(dtype=torch.float16)
@@ -88,7 +89,6 @@ vae.requires_grad_(False)
 text_encoder.requires_grad_(False)
 text_encoder_2.requires_grad_(False)
 image_encoder.requires_grad_(False)
-transformer.requires_grad_(False)
 
 # Create lora directory if it doesn't exist
 lora_dir = os.path.join(os.path.dirname(__file__), 'loras')
@@ -112,14 +112,12 @@ if os.path.isdir(lora_folder):
 
 if not high_vram:
     # DynamicSwapInstaller is same as huggingface's enable_sequential_offload but 3x faster
-    DynamicSwapInstaller.install_model(transformer, device=gpu)
     DynamicSwapInstaller.install_model(text_encoder, device=gpu)
 else:
     text_encoder.to(gpu)
     text_encoder_2.to(gpu)
     image_encoder.to(gpu)
     vae.to(gpu)
-    transformer.to(gpu)
 
 stream = AsyncStream()
 
@@ -196,9 +194,11 @@ def load_lora_file(lora_file):
         import shutil
         shutil.copy(lora_file, lora_dest)
         
-        # Load the LoRA
-        global transformer, lora_names
-        transformer = lora_utils.load_lora(transformer, lora_dir, lora_name)
+        # Load the LoRA - NOTE: This needs adjustment for multiple transformers
+        global current_transformer, lora_names
+        if current_transformer is None:
+            return None, "Error: No model loaded to apply LoRA to. Generate something first."
+        current_transformer = lora_utils.load_lora(current_transformer, lora_dir, lora_name)
         
         # Add to lora_names if not already there
         lora_base_name = lora_name.split('.')[0]
@@ -206,12 +206,12 @@ def load_lora_file(lora_file):
             lora_names.append(lora_base_name)
         
         # Get the current device of the transformer
-        device = next(transformer.parameters()).device
+        device = next(current_transformer.parameters()).device
         
         # Move all LoRA adapters to the same device as the base model
-        move_lora_adapters_to_device(transformer, device)
+        move_lora_adapters_to_device(current_transformer, device)
         
-        print(f"Loaded LoRA: {lora_name}")
+        print(f"Loaded LoRA: {lora_name} to {type(current_transformer).__name__}")
         return gr.update(choices=lora_names), f"Successfully loaded LoRA: {lora_name}"
     except Exception as e:
         print(f"Error loading LoRA: {e}")
@@ -219,7 +219,8 @@ def load_lora_file(lora_file):
         
 @torch.no_grad()
 def worker(
-    input_image, 
+    model_type,
+    input_image,
     prompt_text, 
     n_prompt, 
     seed, 
@@ -242,7 +243,7 @@ def worker(
     output_dir=None,
     metadata_dir=None
 ):
-    global transformer
+    global transformer_original, transformer_f1, current_transformer, high_vram
     
     stream_to_use = job_stream if job_stream is not None else stream
 
@@ -257,9 +258,58 @@ def worker(
 
     try:
         if not high_vram:
-            unload_complete_models(
-                text_encoder, text_encoder_2, image_encoder, vae, transformer
-            )
+            # Unload everything *except* the potentially active transformer
+            unload_complete_models(text_encoder, text_encoder_2, image_encoder, vae)
+            if current_transformer is not None:
+                offload_model_from_device_for_memory_preservation(current_transformer, target_device=gpu, preserved_memory_gb=8)
+
+        # --- Model Loading / Switching ---
+        print(f"Worker starting for model type: {model_type}")
+        target_transformer_model = None
+        other_transformer_model = None
+
+        if model_type == "Original":
+            if transformer_original is None:
+                print("Loading Original Transformer...")
+                transformer_original = HunyuanVideoTransformer3DModelPacked.from_pretrained('lllyasviel/FramePackI2V_HY', torch_dtype=torch.bfloat16).cpu()
+                transformer_original.eval()
+                transformer_original.to(dtype=torch.bfloat16)
+                transformer_original.requires_grad_(False)
+                if not high_vram:
+                    DynamicSwapInstaller.install_model(transformer_original, device=gpu)
+                print("Original Transformer Loaded.")
+            target_transformer_model = transformer_original
+            other_transformer_model = transformer_f1
+        elif model_type == "F1":
+            if transformer_f1 is None:
+                print("Loading F1 Transformer...")
+                transformer_f1 = HunyuanVideoTransformer3DModelPacked.from_pretrained('lllyasviel/FramePack_F1_I2V_HY_20250503', torch_dtype=torch.bfloat16).cpu()
+                transformer_f1.eval()
+                transformer_f1.to(dtype=torch.bfloat16)
+                transformer_f1.requires_grad_(False)
+                if not high_vram:
+                    DynamicSwapInstaller.install_model(transformer_f1, device=gpu)
+                print("F1 Transformer Loaded.")
+            target_transformer_model = transformer_f1
+            other_transformer_model = transformer_original
+        else:
+            raise ValueError(f"Unknown model_type: {model_type}")
+
+        # Unload the *other* model if it exists and we are in low VRAM mode
+        if not high_vram and other_transformer_model is not None:
+            print(f"Offloading inactive transformer: {type(other_transformer_model).__name__}")
+            offload_model_from_device_for_memory_preservation(other_transformer_model, target_device=gpu, preserved_memory_gb=8)
+            # Consider fully unloading if memory pressure is extreme:
+            # unload_complete_models(other_transformer_model)
+            # if model_type == "Original": transformer_f1 = None
+            # else: transformer_original = None
+
+        current_transformer = target_transformer_model # Set the globally accessible current model
+
+        # Ensure the target model is on the correct device if in high VRAM mode
+        if high_vram and current_transformer.device != gpu:
+            print(f"Moving {model_type} transformer to GPU (High VRAM mode)...")
+            current_transformer.to(gpu)
 
         # Pre-encode all prompts
         stream_to_use.output_queue.push(('progress', (None, '', make_progress_bar_html(0, 'Text encoding all prompts...'))))
@@ -368,13 +418,13 @@ def worker(
         # Dtype
         for prompt_key in encoded_prompts:
             llama_vec, llama_attention_mask, clip_l_pooler = encoded_prompts[prompt_key]
-            llama_vec = llama_vec.to(transformer.dtype)
-            clip_l_pooler = clip_l_pooler.to(transformer.dtype)
+            llama_vec = llama_vec.to(current_transformer.dtype)
+            clip_l_pooler = clip_l_pooler.to(current_transformer.dtype)
             encoded_prompts[prompt_key] = (llama_vec, llama_attention_mask, clip_l_pooler)
 
-        llama_vec_n = llama_vec_n.to(transformer.dtype)
-        clip_l_pooler_n = clip_l_pooler_n.to(transformer.dtype)
-        image_encoder_last_hidden_state = image_encoder_last_hidden_state.to(transformer.dtype)
+        llama_vec_n = llama_vec_n.to(current_transformer.dtype)
+        clip_l_pooler_n = clip_l_pooler_n.to(current_transformer.dtype)
+        image_encoder_last_hidden_state = image_encoder_last_hidden_state.to(current_transformer.dtype)
 
         # Sampling
         stream_to_use.output_queue.push(('progress', (None, '', make_progress_bar_html(0, 'Start sampling ...'))))
@@ -394,8 +444,8 @@ def worker(
         # PROMPT BLENDING: Track section index
         section_idx = 0
 
-        #unload all loras
-        transformer = unload_all_loras(transformer)
+        # unload all loras from the current transformer
+        current_transformer = lora_utils.unload_all_loras(current_transformer)
 
         # --- LoRA loading and scaling ---
         if selected_loras:
@@ -407,15 +457,17 @@ def worker(
                         lora_file = lora_name + ext
                         break
                 if lora_file:
-                    print(f"Loading LoRA {lora_file}")
-                    transformer = lora_utils.load_lora(transformer, lora_folder, lora_file)
+                    print(f"Loading LoRA {lora_file} to {model_type} model")
+                    current_transformer = lora_utils.load_lora(current_transformer, lora_folder, lora_file)
                     # Set LoRA strength if provided
                     if lora_values and idx < len(lora_values):
                         lora_strength = float(lora_values[idx])
-                        # Set scaling for this LoRA
-                        for name, module in transformer.named_modules():
+                        print(f"Setting LoRA {lora_name} strength to {lora_strength}")
+                        # Set scaling for this LoRA by iterating through modules
+                        for name, module in current_transformer.named_modules():
                             if hasattr(module, 'scaling'):
                                 if isinstance(module.scaling, dict):
+                                    # Handle ModuleDict case (PEFT implementation)
                                     if lora_name in module.scaling:
                                         if isinstance(module.scaling[lora_name], torch.Tensor):
                                             module.scaling[lora_name] = torch.tensor(
@@ -424,6 +476,7 @@ def worker(
                                         else:
                                             module.scaling[lora_name] = lora_strength
                                 else:
+                                    # Handle direct attribute case for scaling if needed
                                     if isinstance(module.scaling, torch.Tensor):
                                         module.scaling = torch.tensor(
                                             lora_strength, device=module.scaling.device
@@ -548,18 +601,19 @@ def worker(
             clean_latents = torch.cat([clean_latents_pre, clean_latents_post], dim=2)
 
             if not high_vram:
-                unload_complete_models()
-                move_model_to_device_with_memory_preservation(transformer, target_device=gpu, preserved_memory_gb=gpu_memory_preservation)
-                if lora_names:
-                    move_lora_adapters_to_device(transformer, gpu)
+                # Unload VAE etc. before loading transformer
+                unload_complete_models(vae, text_encoder, text_encoder_2, image_encoder)
+                move_model_to_device_with_memory_preservation(current_transformer, target_device=gpu, preserved_memory_gb=gpu_memory_preservation) # Use current_transformer
+                if selected_loras:
+                    move_lora_adapters_to_device(current_transformer, gpu)
 
             if use_teacache:
-                transformer.initialize_teacache(enable_teacache=True, num_steps=steps)
+                current_transformer.initialize_teacache(enable_teacache=True, num_steps=steps)
             else:
-                transformer.initialize_teacache(enable_teacache=False)
+                current_transformer.initialize_teacache(enable_teacache=False)
 
             generated_latents = sample_hunyuan(
-                transformer=transformer,
+                transformer=current_transformer,
                 sampler='unipc',
                 width=width,
                 height=height,
@@ -595,9 +649,9 @@ def worker(
             history_latents = torch.cat([generated_latents.to(history_latents), history_latents], dim=2)
 
             if not high_vram:
-                if lora_names:
-                    move_lora_adapters_to_device(transformer, cpu)
-                offload_model_from_device_for_memory_preservation(transformer, target_device=gpu, preserved_memory_gb=8)
+                if selected_loras:
+                    move_lora_adapters_to_device(current_transformer, cpu) # Use current_transformer
+                offload_model_from_device_for_memory_preservation(current_transformer, target_device=gpu, preserved_memory_gb=8) # Use current_transformer
                 load_model_as_complete(vae, target_device=gpu)
 
             real_history_latents = history_latents[:, :, :total_generated_latent_frames, :, :]
@@ -626,9 +680,11 @@ def worker(
 
     except:
         traceback.print_exc()
+        stream_to_use.output_queue.push(('error', f"Error during generation: {traceback.format_exc()}"))
         if not high_vram:
+            # Ensure all models including the potentially active transformer are unloaded on error
             unload_complete_models(
-                text_encoder, text_encoder_2, image_encoder, vae, transformer
+                text_encoder, text_encoder_2, image_encoder, vae, current_transformer
             )
 
     if clean_up_videos:
@@ -670,9 +726,10 @@ job_queue.set_worker_function(worker)
 
 
 def process(
-        input_image, 
-        prompt_text, 
-        n_prompt, 
+        model_type,
+        input_image,
+        prompt_text,
+        n_prompt,
         seed, 
         total_second_length, 
         latent_window_size, 
@@ -721,6 +778,7 @@ def process(
     
     # Create job parameters
     job_params = {
+        'model_type': model_type,
         'input_image': input_image.copy(),  # Make a copy to avoid reference issues
         'prompt_text': prompt_text,
         'n_prompt': n_prompt,
