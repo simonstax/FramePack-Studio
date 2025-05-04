@@ -106,7 +106,7 @@ def create_interface(
         with gr.Row(elem_id="fixed-toolbar"):
             gr.Markdown("<h1 style='margin:0;color:white;'>FramePack Studio</h1>")
             with gr.Column(scale=1):
-                queue_stats_display = gr.Markdown("<p style='margin:0;color:white;'>Queue: 0 | Completed: 0</p>")
+                # queue_stats_display = gr.Markdown("<p style='margin:0;color:white;'>Queue: 0 | Completed: 0</p>")
             with gr.Column(scale=0):
                 refresh_stats_btn = gr.Button("⟳", elem_id="refresh-stats-btn")
 
@@ -524,7 +524,7 @@ def create_interface(
         refresh_stats_btn.click(
             fn=lambda: (get_queue_stats(), update_queue_status_fn()), # Use update_queue_status_fn passed in
             inputs=None,
-            outputs=[queue_stats_display, queue_status]
+            outputs=[queue_status]  # Removed queue_stats_display from outputs
         )
 
         # Set up auto-refresh for queue status (using a timer)

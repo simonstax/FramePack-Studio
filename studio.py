@@ -35,6 +35,36 @@ from modules.prompt_handler import parse_timestamped_prompt
 from modules.interface import create_interface, format_queue_status
 from modules.settings import Settings
 
+# ADDED: Debug function to verify LoRA state
+def verify_lora_state(transformer, label=""):
+    """Debug function to verify the state of LoRAs in a transformer model"""
+    if transformer is None:
+        print(f"[{label}] Transformer is None, cannot verify LoRA state")
+        return
+        
+    has_loras = False
+    if hasattr(transformer, 'peft_config'):
+        adapter_names = list(transformer.peft_config.keys()) if transformer.peft_config else []
+        if adapter_names:
+            has_loras = True
+            print(f"[{label}] Transformer has LoRAs: {', '.join(adapter_names)}")
+        else:
+            print(f"[{label}] Transformer has no LoRAs in peft_config")
+    else:
+        print(f"[{label}] Transformer has no peft_config attribute")
+        
+    # Check for any LoRA modules
+    for name, module in transformer.named_modules():
+        if hasattr(module, 'lora_A') and module.lora_A:
+            has_loras = True
+            print(f"[{label}] Found lora_A in module {name}")
+        if hasattr(module, 'lora_B') and module.lora_B:
+            has_loras = True
+            print(f"[{label}] Found lora_B in module {name}")
+            
+    if not has_loras:
+        print(f"[{label}] No LoRA components found in transformer")
+
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--share', action='store_true')
@@ -209,6 +239,10 @@ def load_lora_file(lora_file):
         global current_transformer, lora_names
         if current_transformer is None:
             return None, "Error: No model loaded to apply LoRA to. Generate something first."
+        
+        # ADDED: Unload any existing LoRAs first
+        current_transformer = lora_utils.unload_all_loras(current_transformer)
+        
         current_transformer = lora_utils.load_lora(current_transformer, lora_dir, lora_name)
         
         # Add to lora_names if not already there
@@ -223,6 +257,10 @@ def load_lora_file(lora_file):
         move_lora_adapters_to_device(current_transformer, device)
         
         print(f"Loaded LoRA: {lora_name} to {type(current_transformer).__name__}")
+        
+        # ADDED: Verify LoRA state after loading
+        verify_lora_state(current_transformer, "After loading LoRA file")
+        
         return gr.update(choices=lora_names), f"Successfully loaded LoRA: {lora_name}"
     except Exception as e:
         print(f"Error loading LoRA: {e}")
@@ -255,6 +293,18 @@ def worker(
     metadata_dir=None
 ):
     global transformer_original, transformer_f1, current_transformer, high_vram
+    
+    # ADDED: Ensure any existing LoRAs are unloaded from the current transformer
+    if current_transformer is not None:
+        print("Unloading any existing LoRAs before starting new job")
+        current_transformer = lora_utils.unload_all_loras(current_transformer)
+        import gc
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    
+    # ADDED: Verify LoRA state at worker start
+    verify_lora_state(current_transformer, "Worker start")
     
     stream_to_use = job_stream if job_stream is not None else stream
 
@@ -317,6 +367,11 @@ def worker(
             # else: transformer_original = None
 
         current_transformer = target_transformer_model # Set the globally accessible current model
+
+        # ADDED: Ensure the target model has no LoRAs loaded
+        print(f"Ensuring {model_type} transformer has no LoRAs loaded")
+        current_transformer = lora_utils.unload_all_loras(current_transformer)
+        verify_lora_state(current_transformer, "After model selection")
 
         # Ensure the target model is on the correct device if in high VRAM mode
         if high_vram and current_transformer.device != gpu:
@@ -457,8 +512,9 @@ def worker(
         # PROMPT BLENDING: Track section index
         section_idx = 0
 
-        # unload all loras from the current transformer
+        # ADDED: Completely unload all loras from the current transformer
         current_transformer = lora_utils.unload_all_loras(current_transformer)
+        verify_lora_state(current_transformer, "Before loading LoRAs")
 
         # --- LoRA loading and scaling ---
         if selected_loras:
@@ -500,6 +556,9 @@ def worker(
                                         module.scaling = lora_strength
                 else:
                     print(f"LoRA file for {lora_name} not found!")
+            
+            # ADDED: Verify LoRA state after loading
+            verify_lora_state(current_transformer, "After loading LoRAs")
 
         # --- Callback for progress ---
         def callback(d):
@@ -696,8 +755,28 @@ def worker(
 
             section_idx += 1  # PROMPT BLENDING: increment section index
 
+        # ADDED: Unload all LoRAs after generation completed
+        if selected_loras:
+            print("Unloading all LoRAs after generation completed")
+            current_transformer = lora_utils.unload_all_loras(current_transformer)
+            verify_lora_state(current_transformer, "After generation completed")
+            import gc
+            gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+
     except:
         traceback.print_exc()
+        # ADDED: Unload all LoRAs after error
+        if current_transformer is not None and selected_loras:
+            print("Unloading all LoRAs after error")
+            current_transformer = lora_utils.unload_all_loras(current_transformer)
+            verify_lora_state(current_transformer, "After error")
+            import gc
+            gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                
         stream_to_use.output_queue.push(('error', f"Error during generation: {traceback.format_exc()}"))
         if not high_vram:
             # Ensure all models including the potentially active transformer are unloaded on error
@@ -732,7 +811,8 @@ def worker(
         except Exception as e:
             print(f"Error during video cleanup: {e}")
 
-        
+    # ADDED: Final verification of LoRA state
+    verify_lora_state(current_transformer, "Worker end")
 
     stream_to_use.output_queue.push(('end', None))
     return

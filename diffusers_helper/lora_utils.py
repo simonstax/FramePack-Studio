@@ -4,6 +4,7 @@ from diffusers.loaders.lora_pipeline import _fetch_state_dict
 from diffusers.loaders.lora_conversion_utils import _convert_hunyuan_video_lora_to_diffusers
 from diffusers.utils.peft_utils import set_weights_and_activate_adapters
 from diffusers.loaders.peft import _SET_ADAPTER_SCALE_FN_MAPPING
+import torch
 
 def load_lora(transformer, lora_path: Path, weight_name: Optional[str] = "pytorch_lora_weights.safetensors"):
     """
@@ -48,13 +49,7 @@ def load_lora(transformer, lora_path: Path, weight_name: Optional[str] = "pytorc
 
 def unload_all_loras(transformer):
     """
-    Unload all LoRA adapters from the transformer model.
-    
-    Args:
-        transformer: The transformer model from which to remove all LoRA adapters.
-    
-    Returns:
-        The transformer model with all LoRA adapters removed.
+    Completely unload all LoRA adapters from the transformer model.
     """
     if hasattr(transformer, 'peft_config') and transformer.peft_config:
         # Get all adapter names
@@ -64,11 +59,34 @@ def unload_all_loras(transformer):
             print(f"Removing all LoRA adapters: {', '.join(adapter_names)}")
             # Delete all adapters
             transformer.delete_adapters(adapter_names)
-            print("All LoRA adapters have been removed.")
+            
+            # Force cleanup of any remaining adapter references
+            if hasattr(transformer, 'active_adapter'):
+                transformer.active_adapter = None
+                
+            # Clear any cached states
+            for module in transformer.modules():
+                if hasattr(module, 'lora_A'):
+                    if isinstance(module.lora_A, dict):
+                        module.lora_A.clear()
+                if hasattr(module, 'lora_B'):
+                    if isinstance(module.lora_B, dict):
+                        module.lora_B.clear()
+                if hasattr(module, 'scaling'):
+                    if isinstance(module.scaling, dict):
+                        module.scaling.clear()
+            
+            print("All LoRA adapters have been completely removed.")
         else:
             print("No LoRA adapters found to remove.")
     else:
         print("Model doesn't have any LoRA adapters or peft_config.")
+    
+    # Force garbage collection
+    import gc
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
     
     return transformer
 
