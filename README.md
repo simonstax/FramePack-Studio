@@ -6,7 +6,7 @@ FramePack Studio is an enhanced version of the FramePack demo script, designed t
 
 ## Current Features
 
-- **F1 and Original FramePack Models**: Define different prompts for specific time segments in your video
+- **F1 and Original FramePack Models**: Run both in a single queue
 - **Timestamped Prompts**: Define different prompts for specific time segments in your video
 - **Prompt Blending**: Define the blending time between timestamped prompts
 - **Basic LoRA Support**: Works with most (all?) hunyuan LoRAs
