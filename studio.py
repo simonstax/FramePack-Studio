@@ -292,7 +292,8 @@ def worker(
     output_dir=None,
     metadata_dir=None,
     resolutionW=640,  # Add resolution parameter with default value
-    resolutionH=640
+    resolutionH=640,
+    lora_loaded_names=[]
 ):
     global transformer_original, transformer_f1, current_transformer, high_vram
     
@@ -541,7 +542,8 @@ def worker(
 
         # --- LoRA loading and scaling ---
         if selected_loras:
-            for idx, lora_name in enumerate(selected_loras):
+            for lora_name in selected_loras:
+                idx = lora_loaded_names.index(lora_name)
                 lora_file = None
                 for ext in [".safetensors", ".pt"]:
                     # Find any file that starts with the lora_name and ends with the extension
@@ -914,7 +916,8 @@ def process(
         selected_loras,
         resolutionW,
         resolutionH,
-        *lora_values   
+        lora_loaded_names,
+        *lora_values
     ):
     
     # Create a blank black image if no 
@@ -969,7 +972,8 @@ def process(
         'output_dir': settings.get("output_dir"),
         'metadata_dir': settings.get("metadata_dir"),
         'resolutionW': resolutionW, # Add resolution parameter
-        'resolutionH': resolutionH  
+        'resolutionH': resolutionH,
+        'lora_loaded_names': lora_loaded_names
     }
     
     # Add LoRA values if provided - extract them from the tuple
