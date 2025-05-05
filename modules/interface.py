@@ -407,9 +407,10 @@ def create_interface(
                             height="auto"
                         )
                         refresh_button = gr.Button("Update")
-                    with gr.Column(scale=7):
-                        video_out = gr.Video(sources=[], autoplay=True, loop=True, visible=False, scale=5)
-                        info_out = gr.Textbox(label="Generation info", visible=False, scale=2)
+                    with gr.Column(scale=5):
+                        video_out = gr.Video(sources=[], autoplay=True, loop=True, visible=False)
+                    with gr.Column(scale=1):
+                        info_out = gr.Textbox(label="Generation info", visible=False)
                     def refresh_gallery():
                         new_items = get_gallery_items()
                         return gr.update(value=[i[0] for i in new_items]), new_items
