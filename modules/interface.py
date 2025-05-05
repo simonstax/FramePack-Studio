@@ -141,7 +141,7 @@ def create_interface(
                         with gr.Accordion("Generation Parameters", open=True):
                             with gr.Row():
                                 steps = gr.Slider(label="Steps", minimum=1, maximum=100, value=25, step=1)
-                                total_second_length = gr.Slider(label="Video Length (Seconds)", minimum=1, maximum=120, value=5, step=0.1)
+                                total_second_length = gr.Slider(label="Video Length (Seconds)", minimum=1, maximum=120, value=6, step=0.1)
                             with gr.Row():
                                 resolution = gr.Slider(
                                     label="Output Resolution (Width)", minimum=128, maximum=768, value=640, 
