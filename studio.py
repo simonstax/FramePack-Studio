@@ -291,7 +291,8 @@ def worker(
     job_stream=None,
     output_dir=None,
     metadata_dir=None,
-    resolution=640  # Add resolution parameter with default value
+    resolutionW=640,  # Add resolution parameter with default value
+    resolutionH=640
 ):
     global transformer_original, transformer_f1, current_transformer, high_vram
     
@@ -425,7 +426,7 @@ def worker(
         stream_to_use.output_queue.push(('progress', (None, '', make_progress_bar_html(0, 'Image processing ...'))))
 
         H, W, C = input_image.shape
-        height, width = find_nearest_bucket(H, W, resolution=resolution)
+        height, width = find_nearest_bucket(H, W, resolution=resolutionW)
         input_image_np = resize_and_center_crop(input_image, target_width=width, target_height=height)
 
         if save_metadata:
@@ -448,7 +449,8 @@ def worker(
                 "latent_window_size": latent_window_size,
                 "mp4_crf": mp4_crf,
                 "timestamp": time.time(),
-                "resolution": resolution,  # Add resolution to metadata
+                "resolutionW": resolutionW,  # Add resolution to metadata
+                "resolutionH": resolutionH,
                 "model_type": model_type  # Add model type to metadata
             }
             # # Add LoRA information to metadata if LoRAs are used
@@ -910,14 +912,15 @@ def process(
         latent_type,
         clean_up_videos,
         selected_loras,
-        resolution,
+        resolutionW,
+        resolutionH,
         *lora_values   
     ):
     
     # Create a blank black image if no 
     # Create a default image based on the selected latent_type
     if input_image is None:
-        default_height, default_width = 640, 640
+        default_height, default_width = resolutionH, resolutionW
         if latent_type == "White":
             # Create a white image
             input_image = np.ones((default_height, default_width, 3), dtype=np.uint8) * 255
@@ -965,7 +968,8 @@ def process(
         'clean_up_videos': clean_up_videos,
         'output_dir': settings.get("output_dir"),
         'metadata_dir': settings.get("metadata_dir"),
-        'resolution': resolution  # Add resolution parameter
+        'resolutionW': resolutionW, # Add resolution parameter
+        'resolutionH': resolutionH  
     }
     
     # Add LoRA values if provided - extract them from the tuple
