@@ -360,67 +360,67 @@ def create_interface(
                             object-fit: cover;
                         }
                         """
-            with gr.TabItem("Outputs"):
-                outputDirectory = settings.get("output_dir", settings.default_settings['output_dir'])
-                def get_gallery_items():
-                    items = []
-                    for f in os.listdir(outputDirectory):
-                        if f.endswith(".png"):
-                            prefix = os.path.splitext(f)[0]
-                            latest_video = get_latest_video_version(prefix)
-                            if latest_video:
-                                video_path = os.path.join(outputDirectory, latest_video)
-                                mtime = os.path.getmtime(video_path)
-                                preview_path = os.path.join(outputDirectory, f)
-                                items.append((preview_path, prefix, mtime))
-                    items.sort(key=lambda x: x[2], reverse=True)
-                    return [(i[0], i[1]) for i in items]
-                def get_latest_video_version(prefix):
-                    max_number = -1
-                    selected_file = None
-                    for f in os.listdir(outputDirectory):
-                        if f.startswith(prefix + "_") and f.endswith(".mp4"):
-                            num = int(f.replace(prefix + "_", '').replace(".mp4", ''))
-                            if num > max_number:
-                                max_number = num
-                                selected_file = f
-                    return selected_file
-                def load_video_and_info_from_prefix(prefix):
-                    video_file = get_latest_video_version(prefix)
-                    if not video_file:
-                        return None, "JSON not found."
-                    video_path = os.path.join(outputDirectory, video_file)
-                    json_path = os.path.join(outputDirectory, prefix) + ".json"
-                    info = {"description": "no info"}
-                    if os.path.exists(json_path):
-                        with open(json_path, "r", encoding="utf-8") as f:
-                            info = json.load(f)
-                    return video_path, json.dumps(info, indent=2, ensure_ascii=False)
-                gallery_items_state = gr.State(get_gallery_items())
-                with gr.Row():
-                    with gr.Column(scale=2):
-                        thumbs = gr.Gallery(
-                            # value=[i[0] for i in get_gallery_items()],
-                            columns=[4],
-                            allow_preview=False,
-                            object_fit="cover",
-                            height="auto"
-                        )
-                        refresh_button = gr.Button("Update")
-                    with gr.Column(scale=5):
-                        video_out = gr.Video(sources=[], autoplay=True, loop=True, visible=False)
-                    with gr.Column(scale=1):
-                        info_out = gr.Textbox(label="Generation info", visible=False)
-                    def refresh_gallery():
-                        new_items = get_gallery_items()
-                        return gr.update(value=[i[0] for i in new_items]), new_items
-                    refresh_button.click(fn=refresh_gallery, outputs=[thumbs, gallery_items_state])
+            # with gr.TabItem("Outputs"):
+            #     outputDirectory = settings.get("output_dir", settings.default_settings['output_dir'])
+            #     def get_gallery_items():
+            #         items = []
+            #         for f in os.listdir(outputDirectory):
+            #             if f.endswith(".png"):
+            #                 prefix = os.path.splitext(f)[0]
+            #                 latest_video = get_latest_video_version(prefix)
+            #                 if latest_video:
+            #                     video_path = os.path.join(outputDirectory, latest_video)
+            #                     mtime = os.path.getmtime(video_path)
+            #                     preview_path = os.path.join(outputDirectory, f)
+            #                     items.append((preview_path, prefix, mtime))
+            #         items.sort(key=lambda x: x[2], reverse=True)
+            #         return [(i[0], i[1]) for i in items]
+            #     def get_latest_video_version(prefix):
+            #         max_number = -1
+            #         selected_file = None
+            #         for f in os.listdir(outputDirectory):
+            #             if f.startswith(prefix + "_") and f.endswith(".mp4"):
+            #                 num = int(f.replace(prefix + "_", '').replace(".mp4", ''))
+            #                 if num > max_number:
+            #                     max_number = num
+            #                     selected_file = f
+            #         return selected_file
+            #     def load_video_and_info_from_prefix(prefix):
+            #         video_file = get_latest_video_version(prefix)
+            #         if not video_file:
+            #             return None, "JSON not found."
+            #         video_path = os.path.join(outputDirectory, video_file)
+            #         json_path = os.path.join(outputDirectory, prefix) + ".json"
+            #         info = {"description": "no info"}
+            #         if os.path.exists(json_path):
+            #             with open(json_path, "r", encoding="utf-8") as f:
+            #                 info = json.load(f)
+            #         return video_path, json.dumps(info, indent=2, ensure_ascii=False)
+            #     gallery_items_state = gr.State(get_gallery_items())
+            #     with gr.Row():
+            #         with gr.Column(scale=2):
+            #             thumbs = gr.Gallery(
+            #                 # value=[i[0] for i in get_gallery_items()],
+            #                 columns=[4],
+            #                 allow_preview=False,
+            #                 object_fit="cover",
+            #                 height="auto"
+            #             )
+            #             refresh_button = gr.Button("Update")
+            #         with gr.Column(scale=5):
+            #             video_out = gr.Video(sources=[], autoplay=True, loop=True, visible=False)
+            #         with gr.Column(scale=1):
+            #             info_out = gr.Textbox(label="Generation info", visible=False)
+            #         def refresh_gallery():
+            #             new_items = get_gallery_items()
+            #             return gr.update(value=[i[0] for i in new_items]), new_items
+            #         refresh_button.click(fn=refresh_gallery, outputs=[thumbs, gallery_items_state])
                     
-                    def on_select(evt: gr.SelectData, gallery_items):
-                        prefix = gallery_items[evt.index][1]
-                        video, info = load_video_and_info_from_prefix(prefix)
-                        return gr.update(value=video, visible=True), gr.update(value=info, visible=True)
-                    thumbs.select(fn=on_select, inputs=[gallery_items_state], outputs=[video_out, info_out])
+            #         def on_select(evt: gr.SelectData, gallery_items):
+            #             prefix = gallery_items[evt.index][1]
+            #             video, info = load_video_and_info_from_prefix(prefix)
+            #             return gr.update(value=video, visible=True), gr.update(value=info, visible=True)
+            #         thumbs.select(fn=on_select, inputs=[gallery_items_state], outputs=[video_out, info_out])
 
             with gr.Tab("Settings"):
                 with gr.Row():
