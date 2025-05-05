@@ -56,7 +56,7 @@ Additional command line options:
 
 Add LoRAs to the /loras/ folder at the root of the installation. Select the LoRAs you wish to load and set the weights for each generation.
 
-NOTE: there is currently a bug with LoRA unloading. Previously loaded LoRAs may impact future generations. Recommend restarting the app for now to be sure they're all unloaded from the model.
+NOTE: slow lora loading is a known issue
 
 ## Working with Timestamped Prompts
 
