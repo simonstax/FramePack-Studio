@@ -267,7 +267,7 @@ def create_interface(
                                     value=[],
                                     info="Select one or more LoRAs to use for this job"
                                 )
-
+                                f1_lora_names_states = gr.State(lora_names)
                                 f1_lora_sliders = {}
                                 for lora in lora_names:
                                     f1_lora_sliders[lora] = gr.Slider(
@@ -603,7 +603,8 @@ def create_interface(
             f1_clean_up_videos,
             f1_lora_selector,
             f1_resolutionW,
-            f1_resolutionH
+            f1_resolutionH,
+            f1_lora_names_states
         ]
         # Add F1 LoRA sliders to the input list
         f1_ips.extend([f1_lora_sliders[lora] for lora in lora_names])
