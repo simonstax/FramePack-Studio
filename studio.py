@@ -803,10 +803,7 @@ def worker(
             if history_pixels is None:
                 history_pixels = vae_decode(real_history_latents, vae).cpu()
             else:
-                if model_type == "Original":
-                    section_latent_frames = (latent_window_size * 2 + 1) if is_last_section else (latent_window_size * 2)
-                else:
-                    section_latent_frames = latent_window_size * 2
+                section_latent_frames = latent_window_size * 2
                 
                 overlapped_frames = latent_window_size * 4 - 3
 
