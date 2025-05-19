@@ -93,7 +93,7 @@ tokenizer_2 = CLIPTokenizer.from_pretrained("hunyuanvideo-community/HunyuanVideo
 from safetensors.torch import load_file
 from diffusers import AutoencoderKL
 
-vae_state = load_file("/content/FramePack/vae/vae-ft-mse.safetensors")
+vae_state = load_file("/content/FramePack-Studio/vae/vae-ft-mse.safetensors")
 vae = AutoencoderKL.from_config({
     "block_out_channels": [128, 256, 512, 512],
     "in_channels": 3,
