@@ -87,7 +87,25 @@ text_encoder = LlamaModel.from_pretrained("hunyuanvideo-community/HunyuanVideo",
 text_encoder_2 = CLIPTextModel.from_pretrained("hunyuanvideo-community/HunyuanVideo", subfolder='text_encoder_2', torch_dtype=torch.float16,low_cpu_mem_usage=True).to("cuda")
 tokenizer = LlamaTokenizerFast.from_pretrained("hunyuanvideo-community/HunyuanVideo", subfolder='tokenizer')
 tokenizer_2 = CLIPTokenizer.from_pretrained("hunyuanvideo-community/HunyuanVideo", subfolder='tokenizer_2')
-vae = AutoencoderKLHunyuanVideo.from_pretrained("hunyuanvideo-community/HunyuanVideo", subfolder='vae', torch_dtype=torch.float16,low_cpu_mem_usage=True).to("cuda")
+# vae = AutoencoderKLHunyuanVideo.from_pretrained("hunyuanvideo-community/HunyuanVideo", subfolder='vae', torch_dtype=torch.float16,low_cpu_mem_usage=True).to("cuda")
+
+# below is a patch (19/5/25)
+from safetensors.torch import load_file
+from diffusers import AutoencoderKL
+
+vae_state = load_file("/content/FramePack/vae/vae-ft-mse.safetensors")
+vae = AutoencoderKL.from_config({
+    "block_out_channels": [128, 256, 512, 512],
+    "in_channels": 3,
+    "latent_channels": 4,
+    "layers_per_block": 2,
+    "out_channels": 3,
+    "sample_size": 32,
+    "scaling_factor": 0.18215
+})
+vae.load_state_dict(vae_state)
+vae.to("cuda").eval()
+# End of patch
 
 feature_extractor = SiglipImageProcessor.from_pretrained("lllyasviel/flux_redux_bfl", subfolder='feature_extractor')
 image_encoder = SiglipVisionModel.from_pretrained("lllyasviel/flux_redux_bfl", subfolder='image_encoder', torch_dtype=torch.float16).cpu()
