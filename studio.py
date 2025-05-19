@@ -90,21 +90,13 @@ tokenizer_2 = CLIPTokenizer.from_pretrained("hunyuanvideo-community/HunyuanVideo
 # vae = AutoencoderKLHunyuanVideo.from_pretrained("hunyuanvideo-community/HunyuanVideo", subfolder='vae', torch_dtype=torch.float16,low_cpu_mem_usage=True).to("cuda")
 
 # below is a patch (19/5/25)
-from safetensors.torch import load_file
+# original: vae = AutoencoderKLHunyuanVideo.from_pretrained("hunyuanvideo-community/HunyuanVideo", subfolder='vae', torch_dtype=torch.float16,low_cpu_mem_usage=True).to("cuda")
 from diffusers import AutoencoderKL
-
-vae_state = load_file("/content/FramePack-Studio/vae/vae-ft-mse.safetensors")
-vae = AutoencoderKL.from_config({
-    "block_out_channels": [128, 256, 512, 512],
-    "in_channels": 3,
-    "latent_channels": 4,
-    "layers_per_block": 2,
-    "out_channels": 3,
-    "sample_size": 32,
-    "scaling_factor": 0.18215
-})
-vae.load_state_dict(vae_state)
-vae.to("cuda").eval()
+vae = AutoencoderKL.from_pretrained(
+    "stabilityai/sd-vae-ft-mse",
+    torch_dtype=torch.float16,
+    use_safetensors=True
+).to("cuda")
 # End of patch
 
 feature_extractor = SiglipImageProcessor.from_pretrained("lllyasviel/flux_redux_bfl", subfolder='feature_extractor')
