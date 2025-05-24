@@ -291,8 +291,8 @@ def worker(
     job_stream=None,
     output_dir=None,
     metadata_dir=None,
-    resolutionW=640,  # Add resolution parameter with default value
-    resolutionH=640,
+    resolutionW=512,  # Add resolution parameter with default value
+    resolutionH=512,
     lora_loaded_names=[]
 ):
     global transformer_original, transformer_f1, current_transformer, high_vram
